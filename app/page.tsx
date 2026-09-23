@@ -1,0 +1,357 @@
+"use client";
+
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowLeft, ArrowRight, ArrowUp, BarChart3, Check, ChevronRight, Code2,
+  Copy, Download, ExternalLink, Folder, Gamepad2, GitBranch, Globe2, History,
+  Image as ImageIcon, LayoutGrid, Link2, LoaderCircle, Menu, Monitor,
+  MoreHorizontal, Palette, Plus, Rocket, Search, Settings, Smartphone,
+  Sparkles, Undo2, Upload, Wallet, WandSparkles, X,
+} from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { Toaster } from "@/components/ui/sonner";
+
+type MainView = "create" | "projects" | "gallery";
+type BuilderSource = "prompt" | "import" | "screenshot";
+type PreviewMode = "preview" | "code";
+type DeviceMode = "desktop" | "mobile";
+type Project = { id: string; name: string; prompt: string; ticker: string; accent: string; theme: "light" | "dark"; updated: string; published?: string; headline?: string; subline?: string };
+type ChatMessage = { role: "user" | "assistant"; text: string };
+type ModelContextApi = {
+  registerTool: (tool: {
+    name: string;
+    title?: string;
+    description: string;
+    inputSchema: Record<string, unknown>;
+    annotations?: { readOnlyHint?: boolean; untrustedContentHint?: boolean };
+    execute: (input: unknown) => unknown | Promise<unknown>;
+  }, options?: { signal?: AbortSignal }) => void | Promise<void>;
+};
+
+const galleryItems = [
+  { name: "Mochi Club", type: "Token home", description: "Soft launch page with chart, socials and a direct buy flow.", accent: "#8cc7ff", bg: "#f4f8ff", icon: "M" },
+  { name: "Pixel Pals", type: "Community game", description: "A daily holder challenge with points and a live leaderboard.", accent: "#ef6d4f", bg: "#fff3ee", icon: "P" },
+  { name: "Moon Bureau", type: "Token dashboard", description: "A clean market dashboard for holders, treasury and updates.", accent: "#ae95ff", bg: "#f4f0ff", icon: "◐" },
+  { name: "Cactus Run", type: "Mini game", description: "An arcade landing page built for weekly community contests.", accent: "#8fcf68", bg: "#f3faec", icon: "✦" },
+  { name: "Degen Radio", type: "Media hub", description: "A live community radio page with schedule and token access.", accent: "#ffc85b", bg: "#fff8e6", icon: "D" },
+  { name: "Feral Finance", type: "Analytics", description: "Token metrics, holder activity and treasury in one view.", accent: "#7dd3c7", bg: "#edfbf8", icon: "F" },
+];
+
+const starterIdeas = [
+  { title: "Token home", text: "Build a beautiful token website with a live chart, roadmap and buy button", icon: Globe2 },
+  { title: "Community game", text: "Make a retro clicker game for our holders with a weekly leaderboard", icon: Gamepad2 },
+  { title: "Holder dashboard", text: "Create a clean dashboard for token stats, treasury and community updates", icon: BarChart3 },
+];
+
+const initialProjects: Project[] = [
+  { id: "mochi-club", name: "Mochi Club", prompt: "A playful token home with a live chart and roadmap", ticker: "$MOCHI", accent: "#98c8ff", theme: "light", updated: "18 min ago", published: "mochi.vibecoder.website" },
+  { id: "feral-dashboard", name: "Feral Dashboard", prompt: "A holder dashboard with treasury and community activity", ticker: "$FERAL", accent: "#9fd4a1", theme: "dark", updated: "Yesterday" },
+];
+
+function BrandMark({ small = false }: { small?: boolean }) {
+  return <span className={small ? "brand-mark brand-mark-small" : "brand-mark"} aria-hidden="true"><i /><i /><i /></span>;
+}
+
+function slugify(value: string) {
+  return value.toLowerCase().replace(/\$|[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-").replace(/-+/g, "-").slice(0, 30);
+}
+
+function inferProject(prompt: string, importValue = "") {
+  const source = `${prompt} ${importValue}`.toLowerCase();
+  let name = "Orbit Club";
+  let ticker = "$ORBIT";
+  let accent = "#b9a7ff";
+  let theme: "light" | "dark" = source.includes("dark") || source.includes("cyber") ? "dark" : "light";
+  if (source.includes("frog")) { name = "Frog House"; ticker = "$FROG"; accent = "#a7e96b"; }
+  else if (source.includes("cat") || source.includes("meow")) { name = "Meow Club"; ticker = "$MEOW"; accent = "#ffc35a"; }
+  else if (source.includes("dog") || source.includes("shiba")) { name = "Neon Dog"; ticker = "$NDOG"; accent = "#ff8b6b"; }
+  else if (source.includes("moon")) { name = "Moon Bureau"; ticker = "$MOON"; accent = "#ae95ff"; }
+  else if (source.includes("pepe")) { name = "Pepe Garden"; ticker = "$PEPE"; accent = "#8dd6cb"; }
+  else if (source.includes("dashboard")) { name = "Token Atlas"; ticker = "$ATLAS"; accent = "#86b8ff"; }
+  if (source.includes("red")) accent = "#ff6b5d";
+  if (source.includes("blue")) accent = "#74adff";
+  if (source.includes("green")) accent = "#98d66f";
+  if (source.includes("orange")) accent = "#ffad5c";
+  if (source.includes("purple")) accent = "#b9a7ff";
+  if (source.includes("light")) theme = "light";
+  return { name, ticker, accent, theme };
+}
+
+function projectCode(project: Project) {
+  return `import { TokenChart, WalletButton } from "@vibecoder/solana";
+
+export default function ${project.name.replace(/\s/g, "")}() {
+  return (
+    <main data-theme="${project.theme}">
+      <nav>
+        <strong>${project.name}</strong>
+        <WalletButton />
+      </nav>
+
+      <section className="hero">
+        <span>${project.ticker} · Solana</span>
+        <h1>${project.headline || "A small token with a big orbit."}</h1>
+        <p>${project.subline || "Built by the community, for the community."}</p>
+        <a href="#buy">Buy ${project.ticker}</a>
+      </section>
+
+      <TokenChart token="${project.ticker}" accent="${project.accent}" />
+    </main>
+  );
+}`;
+}
+
+function MiniSite({ project, mobile = false }: { project: Project; mobile?: boolean }) {
+  return (
+    <div className={`mini-site ${project.theme === "dark" ? "mini-site-dark" : ""} ${mobile ? "mini-site-mobile" : ""}`} style={{ "--site-accent": project.accent } as React.CSSProperties}>
+      <nav className="mini-nav">
+        <div className="mini-wordmark"><span className="mini-token-orb">{project.name.charAt(0)}</span><strong>{project.name}</strong></div>
+        <div className="mini-links"><span>About</span><span>Roadmap</span><span>Community</span></div>
+        <button>Buy {project.ticker}</button>
+      </nav>
+      <section className="mini-hero">
+        <div className="mini-copy">
+          <span className="mini-kicker">{project.ticker} · BUILT ON SOLANA</span>
+          <h2>{project.headline || "A small token with a big orbit."}</h2>
+          <p>{project.subline || "Made by people who still believe the internet should be fun."}</p>
+          <div className="mini-actions"><button>Join the community <ArrowRight /></button><span>View chart</span></div>
+        </div>
+        <div className="token-scene" aria-hidden="true"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="token-coin"><span>{project.name.charAt(0)}</span></div><i className="spark spark-one" /><i className="spark spark-two" /></div>
+      </section>
+      <section className="mini-stats">
+        <div><span>Community</span><strong>14.2K</strong></div><div><span>Liquidity</span><strong>$284K</strong></div><div><span>Holders</span><strong>3,841</strong></div>
+        <div className="mini-chart">{[28,42,36,58,52,70,64,82,78,94,88].map((h,i) => <i key={i} style={{ height: `${h}%` }} />)}</div>
+      </section>
+    </div>
+  );
+}
+
+function StarterPreview({ item }: { item: (typeof galleryItems)[number] }) {
+  return <div className="starter-preview" style={{ background: item.bg, "--preview-accent": item.accent } as React.CSSProperties}>
+    <div className="starter-top"><span>{item.icon}</span><i /><i /><i /></div><div className="starter-title">{item.name}</div><div className="starter-pill">{item.type}</div><div className="starter-shape"><span>{item.icon}</span></div><div className="starter-lines"><i /><i /><i /></div>
+  </div>;
+}
+
+export default function Home() {
+  const [mainView, setMainView] = useState<MainView>("create");
+  const [source, setSource] = useState<BuilderSource>("prompt");
+  const [prompt, setPrompt] = useState("");
+  const [importValue, setImportValue] = useState("");
+  const [tokenAddress, setTokenAddress] = useState("");
+  const [screenshotName, setScreenshotName] = useState("");
+  const [screenshotUrl, setScreenshotUrl] = useState("");
+  const [isBuilding, setIsBuilding] = useState(false);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [previewMode, setPreviewMode] = useState<PreviewMode>("preview");
+  const [device, setDevice] = useState<DeviceMode>("desktop");
+  const [projects, setProjects] = useState<Project[]>(initialProjects);
+  const [current, setCurrent] = useState<Project>(initialProjects[0]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [editPrompt, setEditPrompt] = useState("");
+  const [version, setVersion] = useState(1);
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [publishSlug, setPublishSlug] = useState("mochi");
+  const [publishing, setPublishing] = useState(false);
+  const [publishedUrl, setPublishedUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [galleryFilter, setGalleryFilter] = useState("Featured");
+  const [code, setCode] = useState(projectCode(initialProjects[0]));
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem("vibecoder-projects");
+    if (saved) {
+      try {
+        // Hydrate projects once from the browser-only workspace cache.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setProjects(JSON.parse(saved));
+      } catch {
+        window.localStorage.removeItem("vibecoder-projects");
+      }
+    }
+  }, []);
+  useEffect(() => { window.localStorage.setItem("vibecoder-projects", JSON.stringify(projects)); }, [projects]);
+
+  const effectivePrompt = useMemo(() => {
+    if (source === "import") return `Create a polished Solana project site from ${importValue || "this project"}`;
+    if (source === "screenshot") return prompt || "Recreate this visual direction for a Solana token community";
+    return prompt;
+  }, [source, prompt, importValue]);
+  const filteredGallery = useMemo(() => galleryItems.filter(item => {
+    if (galleryFilter === "Featured") return true;
+    if (galleryFilter === "Token sites") return item.type === "Token home";
+    if (galleryFilter === "Games") return item.type.includes("game");
+    if (galleryFilter === "Dashboards") return item.type === "Token dashboard" || item.type === "Analytics";
+    return item.type === "Media hub";
+  }), [galleryFilter]);
+
+  const startBuild = async (override?: string) => {
+    const request = override || effectivePrompt;
+    if (!request.trim()) { toast.error(source === "import" ? "Paste a token address or website first." : "Tell VibeCoder what you want to build."); return; }
+    setIsBuilding(true);
+    let inferred = inferProject(request, importValue);
+    let aiCopy: { headline?: string; subline?: string } = {};
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (apiKey.trim()) headers["x-openrouter-key"] = apiKey.trim();
+      const [response] = await Promise.all([
+        fetch("/api/generate", { method: "POST", headers, body: JSON.stringify({ prompt: request, tokenAddress, importValue }) }),
+        new Promise(resolve => window.setTimeout(resolve, 850)),
+      ]);
+      if (response.ok) {
+        const data = await response.json() as { site?: Partial<Project> };
+        if (data.site) {
+          inferred = { ...inferred, ...data.site } as typeof inferred;
+          aiCopy = { headline: data.site.headline, subline: data.site.subline };
+        }
+      }
+    } catch { /* The local design engine remains available when an AI provider is not configured. */ }
+    const next: Project = { id: `${slugify(inferred.name)}-${Date.now()}`, name: inferred.name, prompt: request, ticker: inferred.ticker, accent: inferred.accent, theme: inferred.theme, updated: "Just now", ...aiCopy };
+    window.setTimeout(() => {
+      setCurrent(next); setCode(projectCode(next));
+      setMessages([{ role: "user", text: request }, { role: "assistant", text: `I built ${next.name} with a responsive token home, live market section and community links.` }]);
+      setProjects(items => [next, ...items]); setPublishSlug(slugify(next.name)); setVersion(1); setWorkspaceOpen(true); setIsBuilding(false); window.scrollTo({ top: 0, behavior: "smooth" });
+    }, 180);
+  };
+
+  const handleScreenshot = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]; if (!file) return; setScreenshotName(file.name);
+    const reader = new FileReader(); reader.onload = () => setScreenshotUrl(String(reader.result || "")); reader.readAsDataURL(file);
+  };
+
+  const applyEdit = () => {
+    if (!editPrompt.trim()) return;
+    const request = editPrompt.trim(); const lower = request.toLowerCase(); const next = { ...current, updated: "Just now" };
+    if (lower.includes("dark")) next.theme = "dark"; if (lower.includes("light")) next.theme = "light";
+    if (lower.includes("purple")) next.accent = "#b9a7ff"; if (lower.includes("green")) next.accent = "#98d66f"; if (lower.includes("blue")) next.accent = "#78b4ff"; if (lower.includes("orange")) next.accent = "#ffad5c"; if (lower.includes("red")) next.accent = "#ff6b5d";
+    setMessages(items => [...items, { role: "user", text: request }, { role: "assistant", text: "Done. I updated the design and saved a new version." }]);
+    setCurrent(next); setCode(projectCode(next)); setProjects(items => items.map(item => item.id === next.id ? next : item)); setVersion(value => value + 1); setEditPrompt(""); toast.success("Design updated");
+  };
+
+  const openProject = (project: Project) => {
+    setCurrent(project); setCode(projectCode(project)); setMessages([{ role: "assistant", text: `${project.name} is ready. Tell me what you want to change.` }]); setPublishSlug(slugify(project.name)); setPublishedUrl(project.published || ""); setWorkspaceOpen(true); setMainView("create"); window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const remix = (name: string, type: string) => { setMainView("create"); setWorkspaceOpen(false); setSource("prompt"); setPrompt(`Remix ${name} into a ${type.toLowerCase()} for my Solana token community`); window.scrollTo({ top: 0, behavior: "smooth" }); toast.success("Remix loaded into the builder"); };
+  const publish = () => {
+    if (!publishSlug.trim()) return; setPublishing(true);
+    window.setTimeout(() => { const url = `${slugify(publishSlug)}.vibecoder.website`; setPublishedUrl(url); setCurrent(project => ({ ...project, published: url })); setProjects(items => items.map(item => item.id === current.id ? { ...item, published: url } : item)); setPublishing(false); toast.success("Your site is live"); }, 900);
+  };
+  const copy = async (value: string) => { await navigator.clipboard?.writeText(value); toast.success("Copied"); };
+  const downloadCode = () => { const blob = new Blob([code], { type: "text/plain" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `${slugify(current.name)}-site.tsx`; link.click(); URL.revokeObjectURL(link.href); toast.success("Code exported"); };
+
+  useEffect(() => {
+    const context = (document as Document & { modelContext?: ModelContextApi }).modelContext;
+    if (!context?.registerTool) return;
+    const lifecycle = new AbortController();
+    const register = async () => {
+      await context.registerTool({
+        name: "start_site_build",
+        title: "Build a Solana community site",
+        description: "Start a new VibeCoder website from a plain-language description and open the generated preview.",
+        inputSchema: { type: "object", properties: { prompt: { type: "string", minLength: 3 } }, required: ["prompt"], additionalProperties: false },
+        annotations: { readOnlyHint: false, untrustedContentHint: false },
+        async execute(input) {
+          const value = input as { prompt?: unknown };
+          if (typeof value?.prompt !== "string" || value.prompt.trim().length < 3) throw new Error("A website prompt of at least three characters is required.");
+          setMainView("create"); setSource("prompt"); setPrompt(value.prompt); startBuild(value.prompt);
+          return { status: "building", prompt: value.prompt };
+        },
+      }, { signal: lifecycle.signal });
+      await context.registerTool({
+        name: "open_remix_gallery",
+        title: "Open the remix gallery",
+        description: "Open VibeCoder's community project gallery so a design can be selected and remixed.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        annotations: { readOnlyHint: false, untrustedContentHint: false },
+        async execute() { setWorkspaceOpen(false); setMainView("gallery"); return { view: "gallery", projects: galleryItems.length }; },
+      }, { signal: lifecycle.signal });
+    };
+    void register().catch(() => undefined);
+    return () => lifecycle.abort();
+    // The model-context integration is intentionally registered once per page lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return <main className="app-shell">
+    <div className="ambient ambient-one" /><div className="ambient ambient-two" />
+    <aside className={`side-rail ${mobileNavOpen ? "side-rail-open" : ""}`}>
+      <div className="brand-row"><BrandMark /><span>VibeCoder</span><button className="mobile-close" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation"><X /></button></div>
+      <nav className="primary-nav" aria-label="Main navigation">
+        <button className={mainView === "create" ? "active" : ""} onClick={() => { setMainView("create"); setWorkspaceOpen(false); setMobileNavOpen(false); }}><Plus /><span>Create</span></button>
+        <button className={mainView === "projects" ? "active" : ""} onClick={() => { setMainView("projects"); setWorkspaceOpen(false); setMobileNavOpen(false); }}><Folder /><span>Projects</span><b>{projects.length}</b></button>
+        <button className={mainView === "gallery" ? "active" : ""} onClick={() => { setMainView("gallery"); setWorkspaceOpen(false); setMobileNavOpen(false); }}><LayoutGrid /><span>Gallery</span></button>
+      </nav>
+      <div className="rail-note"><p>BUILD ON SOLANA.<br />PUBLISH ANYWHERE.</p><span /><small>ONE PROMPT<br />TO A REAL SITE.</small></div>
+      <div className="rail-bottom"><button onClick={() => setSettingsOpen(true)}><Settings /><span>Settings</span></button><div className="engine-state"><i /><span>Builder ready</span></div></div>
+    </aside>
+
+    <section className="main-frame">
+      <header className="top-bar">
+        <button className="mobile-menu" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation"><Menu /></button>
+        <p>{workspaceOpen ? current.name : mainView === "gallery" ? "Made with VibeCoder" : mainView === "projects" ? "Your workspace" : "AI SITE BUILDER FOR SOLANA"}</p>
+        <div className="top-actions"><button className="search-button" aria-label="Search"><Search /></button><div className="network-state"><i /> Mainnet</div><Button className="wallet-button"><Wallet /> Connect wallet</Button></div>
+      </header>
+
+      {workspaceOpen ? <section className="workspace">
+        <header className="workspace-toolbar">
+          <div className="workspace-title"><button onClick={() => setWorkspaceOpen(false)} aria-label="Back to builder"><ArrowLeft /></button><div><strong>{current.name}</strong><span><i /> Saved · v{version}</span></div></div>
+          <div className="toolbar-center"><div className="mode-switch"><button className={previewMode === "preview" ? "active" : ""} onClick={() => setPreviewMode("preview")}><Monitor /> Preview</button><button className={previewMode === "code" ? "active" : ""} onClick={() => setPreviewMode("code")}><Code2 /> Code</button></div></div>
+          <div className="workspace-actions"><button className="icon-action" onClick={() => toast.info("The last change was kept in version history")} aria-label="Undo"><Undo2 /></button><button className="icon-action" onClick={() => setVersionsOpen(true)} aria-label="Version history"><History /></button><Button variant="outline" className="export-button" onClick={downloadCode}><Download /> Export</Button><Button className="publish-button" onClick={() => setPublishOpen(true)}><Rocket /> Publish</Button></div>
+        </header>
+        <div className="workspace-body">
+          <aside className="chat-panel">
+            <div className="chat-heading"><div><WandSparkles /><span>VibeCoder AI</span></div><button aria-label="More options"><MoreHorizontal /></button></div>
+            <div className="chat-messages"><div className="build-summary"><span>VERSION {version}</span><strong>{current.name}</strong><p>{current.prompt}</p></div>{messages.map((message,index) => <div key={`${message.role}-${index}`} className={`message message-${message.role}`}>{message.role === "assistant" && <BrandMark small />}<p>{message.text}</p></div>)}</div>
+            <div className="quick-edits"><button onClick={() => setEditPrompt("Make it dark and more cinematic")}><Palette /> Darker</button><button onClick={() => setEditPrompt("Make the accent green")}><Sparkles /> New color</button><button onClick={() => setEditPrompt("Add a community game section")}><Gamepad2 /> Add game</button></div>
+            <div className="edit-composer"><Textarea value={editPrompt} onChange={e => setEditPrompt(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); applyEdit(); } }} placeholder="Ask for any change..." aria-label="Ask for a website edit" /><button onClick={applyEdit} aria-label="Apply edit" disabled={!editPrompt.trim()}><ArrowUp /></button></div>
+          </aside>
+          <section className="canvas-panel">
+            <div className="canvas-top"><div className="browser-dots"><i /><i /><i /></div><div className="preview-url"><Globe2 /><span>{publishedUrl || `${slugify(current.name)}.preview.vibecoder.website`}</span><button onClick={() => copy(publishedUrl || `${slugify(current.name)}.preview.vibecoder.website`)} aria-label="Copy preview URL"><Copy /></button></div><div className="device-switch"><button className={device === "desktop" ? "active" : ""} onClick={() => setDevice("desktop")} aria-label="Desktop preview"><Monitor /></button><button className={device === "mobile" ? "active" : ""} onClick={() => setDevice("mobile")} aria-label="Mobile preview"><Smartphone /></button></div></div>
+            <div className={`canvas-stage ${device === "mobile" ? "canvas-mobile" : ""}`}>{previewMode === "preview" ? <div className="site-frame"><MiniSite project={current} mobile={device === "mobile"} /></div> : <div className="code-editor"><div className="code-tabs"><span>app/page.tsx</span><button onClick={downloadCode}><Download /> Download</button></div><Textarea value={code} onChange={e => setCode(e.target.value)} spellCheck={false} aria-label="Editable website code" /></div>}</div>
+          </section>
+        </div>
+      </section> : mainView === "create" ? <section className="create-view">
+        <div className="create-heading"><span><Sparkles /> SOLANA, MEET YOUR SITE</span><h1>Build something<br /><em>worth joining.</em></h1><p>Describe it, import it, or show us the look. VibeCoder turns your idea into a real site for your token community.</p></div>
+        <div className="builder-card"><Tabs value={source} onValueChange={value => setSource(value as BuilderSource)}>
+          <TabsList className="source-tabs" variant="line"><TabsTrigger value="prompt"><Sparkles /> Start with a prompt</TabsTrigger><TabsTrigger value="import"><Link2 /> Import a project</TabsTrigger><TabsTrigger value="screenshot"><ImageIcon /> Screenshot to site</TabsTrigger></TabsList>
+          <TabsContent value="prompt" className="source-content"><Textarea value={prompt} onChange={e => setPrompt(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); startBuild(); } }} placeholder="Make a playful website for a frog token with a live chart, a roadmap and a weekly community game..." aria-label="Describe the website to build" /></TabsContent>
+          <TabsContent value="import" className="source-content import-content"><div className="field-label"><Link2 /> Token address or existing website</div><Input value={importValue} onChange={e => setImportValue(e.target.value)} placeholder="Paste a Solana token address or https://..." aria-label="Token address or existing website" /><p>We’ll use the project name, image, copy and links as a starting point.</p></TabsContent>
+          <TabsContent value="screenshot" className="source-content screenshot-content"><input ref={fileRef} type="file" accept="image/*" onChange={handleScreenshot} hidden />{screenshotUrl ? <button className="uploaded-reference" onClick={() => fileRef.current?.click()}>
+            {/* The image is a local data URL selected by the user, so Next Image cannot optimize it. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={screenshotUrl} alt="Uploaded website reference" /><span><Check /> {screenshotName}<small>Click to replace</small></span></button> : <button className="upload-zone" onClick={() => fileRef.current?.click()}><Upload /><span>Drop a reference here or choose an image</span><small>PNG, JPG or WebP</small></button>}<Input value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Optional: tell us what to change" aria-label="Screenshot instructions" /></TabsContent>
+          <div className="builder-footer"><div className="token-field"><span>SOL</span><Input value={tokenAddress} onChange={e => setTokenAddress(e.target.value)} placeholder="Token address (optional)" aria-label="Optional token address" /></div><Button onClick={() => startBuild()} disabled={isBuilding} className="build-button">{isBuilding ? <><LoaderCircle className="spin" /> Building your site</> : <>Build my site <ArrowUp /></>}</Button></div>
+        </Tabs></div>
+        <div className="idea-grid">{starterIdeas.map(idea => <button key={idea.title} onClick={() => { setSource("prompt"); setPrompt(idea.text); }}><span><idea.icon /></span><div><strong>{idea.title}</strong><p>{idea.text}</p></div><ArrowRight /></button>)}</div>
+        <div className="recent-strip"><div className="section-heading"><div><span>YOUR WORK</span><h2>Continue building</h2></div><button onClick={() => setMainView("projects")}>All projects <ArrowRight /></button></div><div className="recent-grid">{projects.slice(0,2).map(project => <button className="recent-project" key={project.id} onClick={() => openProject(project)}><div className="recent-visual" style={{ "--project-accent": project.accent } as React.CSSProperties}><span>{project.name.charAt(0)}</span><i /><i /></div><div><strong>{project.name}</strong><span>{project.updated}</span></div><ChevronRight /></button>)}</div></div>
+      </section> : mainView === "projects" ? <section className="library-view">
+        <div className="library-heading"><span>YOUR WORKSPACE</span><h1>Every idea,<br /><em>still editable.</em></h1><Button onClick={() => { setMainView("create"); setWorkspaceOpen(false); }}><Plus /> New project</Button></div>
+        <div className="project-table">{projects.map(project => <button key={project.id} className="project-row" onClick={() => openProject(project)}><div className="project-thumb" style={{ "--project-accent": project.accent } as React.CSSProperties}><span>{project.name.charAt(0)}</span></div><div className="project-info"><strong>{project.name}</strong><span>{project.prompt}</span></div><span className="project-status">{project.published ? <><i /> Live</> : "Draft"}</span><span className="project-updated">{project.updated}</span><ChevronRight /></button>)}</div>
+      </section> : <section className="gallery-view">
+        <div className="gallery-heading"><div><span>MADE BY THE COMMUNITY</span><h1>Find a good idea.<br /><em>Make it yours.</em></h1></div><p>Explore live community sites, games and tools. Remix any project with one prompt.</p></div>
+        <div className="filter-row">{["Featured","Token sites","Games","Dashboards","Tools"].map(filter => <button key={filter} className={galleryFilter === filter ? "active" : ""} onClick={() => setGalleryFilter(filter)}>{filter}</button>)}</div>
+        <div className="gallery-grid">{filteredGallery.map(item => <article key={item.name} className="gallery-card"><StarterPreview item={item} /><div className="gallery-card-copy"><div><span>{item.type}</span><h3>{item.name}</h3><p>{item.description}</p></div><Button variant="outline" onClick={() => remix(item.name,item.type)}><Sparkles /> Remix</Button></div></article>)}</div>
+      </section>}
+    </section>
+
+    <Dialog open={publishOpen} onOpenChange={setPublishOpen}><DialogContent className="publish-dialog"><DialogHeader><span className="dialog-icon"><Rocket /></span><DialogTitle>Give your site a home.</DialogTitle><DialogDescription>Publish this version now. You can keep editing after it goes live.</DialogDescription></DialogHeader>{publishedUrl ? <div className="published-card"><span><i /> LIVE</span><strong>{publishedUrl}</strong><div><Button variant="outline" onClick={() => copy(publishedUrl)}><Copy /> Copy link</Button><Button onClick={() => toast.info("Opening your live site in a new tab")}>Visit site <ExternalLink /></Button></div></div> : <><label className="subdomain-label">Choose your free subdomain</label><div className="subdomain-field"><Input value={publishSlug} onChange={e => setPublishSlug(slugify(e.target.value))} aria-label="Subdomain" /><span>.vibecoder.website</span></div><div className="publish-checks"><span><Check /> SSL included</span><span><Check /> Instant updates</span><span><Check /> Custom domain ready</span></div><DialogFooter><Button className="publish-confirm" onClick={publish} disabled={publishing || !publishSlug}>{publishing ? <><LoaderCircle className="spin" /> Publishing</> : <>Publish site <ArrowRight /></>}</Button></DialogFooter></>}</DialogContent></Dialog>
+
+    <Sheet open={versionsOpen} onOpenChange={setVersionsOpen}><SheetContent className="history-sheet"><SheetHeader><SheetTitle>Version history</SheetTitle><SheetDescription>Every AI edit creates a version you can restore.</SheetDescription></SheetHeader><div className="version-list">{Array.from({ length: version },(_,index) => version-index).map((item,index) => <button key={item} className={index === 0 ? "current-version" : ""} onClick={() => { setVersion(item); setVersionsOpen(false); toast.success(`Restored version ${item}`); }}><span>v{item}</span><div><strong>{index === 0 ? "Current version" : `Design update ${item}`}</strong><small>{index === 0 ? "Just now" : `${index*8+4} min ago`}</small></div>{index === 0 ? <Check /> : <History />}</button>)}</div></SheetContent></Sheet>
+
+    <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}><SheetContent className="settings-sheet"><SheetHeader><SheetTitle>Builder settings</SheetTitle><SheetDescription>Choose how VibeCoder generates your sites.</SheetDescription></SheetHeader><div className="settings-content">
+      <div className="setting-block"><span>AI MODEL</span><button><div><Sparkles /><p><strong>VibeCoder Auto</strong><small>Best available model for each edit</small></p></div><Check /></button></div>
+      <div className="setting-block"><span>BRING YOUR OWN KEY</span><p>Use your own OpenRouter key for AI-generated names, copy and visual direction. It stays in this session.</p><Input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="Paste OpenRouter API key" aria-label="Personal AI API key" /><Button variant="outline" onClick={() => toast.success(apiKey ? "Key ready for this session" : "Add a key first")}>Use this key</Button></div>
+      <div className="setting-block"><span>CODE & OWNERSHIP</span><Button variant="outline" onClick={() => toast.info("GitHub connection will open here")}><GitBranch /> Connect GitHub</Button><p className="ownership-note">Your sites and generated code stay exportable.</p></div>
+    </div></SheetContent></Sheet>
+    <Toaster position="bottom-center" theme="light" />
+  </main>;
+}
