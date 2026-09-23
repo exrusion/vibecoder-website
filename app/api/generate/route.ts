@@ -9,6 +9,35 @@ type SiteSpec = {
   theme: "light" | "dark";
 };
 
+let discoveredModel: string | undefined;
+
+async function resolveModel(baseUrl: string, key: string) {
+  const configured = process.env.AI_MODEL?.trim();
+  if (configured && !configured.startsWith("~") && !configured.startsWith("routers/")) return configured;
+  if (discoveredModel) return discoveredModel;
+
+  const response = await fetch(`${baseUrl}/models`, {
+    headers: { Authorization: `Bearer ${key}` },
+    next: { revalidate: 3600 },
+  });
+  if (!response.ok) throw new Error("Unable to load the relay model catalogue.");
+
+  const payload = await response.json() as { data?: Array<{ id?: string }> };
+  const ids = payload.data?.map((item) => item.id).filter((id): id is string => Boolean(id)) ?? [];
+  if (!ids.length) throw new Error("The relay returned an empty model catalogue.");
+
+  const preference = [
+    /gpt-4\.1-mini/i,
+    /gpt-4o-mini/i,
+    /gemini-2\.5-flash/i,
+    /claude-3[.-]5-haiku/i,
+    /qwen.*coder/i,
+    /llama.*instruct/i,
+  ];
+  discoveredModel = preference.flatMap((pattern) => ids.filter((id) => pattern.test(id)))[0] ?? ids[0];
+  return discoveredModel;
+}
+
 function localSpec(prompt: string): SiteSpec {
   const value = prompt.toLowerCase();
   const frog = value.includes("frog");
@@ -29,9 +58,9 @@ export async function POST(request: Request) {
   if (!key) return NextResponse.json({ site: fallback, engine: "local" });
 
   const baseUrl = (process.env.AI_BASE_URL?.trim() || "https://openrouter.ai/api/v1").replace(/\/$/, "");
-  const model = process.env.AI_MODEL?.trim() || "~openai/gpt-latest";
 
   try {
+    const model = await resolveModel(baseUrl, key);
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json", "X-Title": "VibeCoder" },
