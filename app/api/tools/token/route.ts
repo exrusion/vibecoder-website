@@ -19,11 +19,11 @@ export async function GET(request: Request) {
     });
     if (!response.ok) throw new Error("DexScreener is temporarily unavailable.");
     const pairs = (await response.json() as Pair[])
-      .filter(pair => pair.chainId === "solana" && (pair.baseToken?.address === address || pair.quoteToken?.address === address))
+      .filter(pair => pair.chainId === "solana" && pair.baseToken?.address === address)
       .sort((a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0));
     const pair = pairs[0];
-    if (!pair) return Response.json({ error: "No live Solana market found for this token yet." }, { status: 404 });
-    const token = pair.baseToken?.address === address ? pair.baseToken : pair.quoteToken;
+    if (!pair) return Response.json({ error: "No direct Solana market found for this token yet." }, { status: 404 });
+    const token = pair.baseToken;
     const social = pair.info?.socials?.find(item => item.platform === "twitter")?.handle;
     return Response.json({
       address, name: token?.name || "", symbol: token?.symbol || "", imageUrl: pair.info?.imageUrl || "",
