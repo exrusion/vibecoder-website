@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     if (!model) throw new Error("No AI model is available.");
     const response = await fetch(baseUrl + "/chat/completions", {
       method: "POST",
-      headers: { Authorization: "Bearer " + key, "Content-Type": "application/json", "X-Title": "VibeCoder Tools" },
+      headers: { Authorization: "Bearer " + key, "Content-Type": "application/json", "X-Title": "Vibekit Tools" },
       body: JSON.stringify({ model, max_tokens: 650, messages: [
         { role: "system", content: instructions[kind] },
         { role: "user", content: "Section type: " + String(body.sectionType || "general").slice(0, 30) + "\nProject context: " + context + "\nRequest: " + prompt },

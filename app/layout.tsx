@@ -4,7 +4,7 @@ import "./globals.css";
 /* eslint-disable @next/next/no-page-custom-font -- App Router loads the shared brand fonts from the root layout. */
 
 export const metadata: Metadata = {
-  title: "VibeCoder — Build for your Solana community",
+  title: "Vibekit — Build for your Solana community",
   description: "Describe, design and publish a real website for your Solana token community.",
   icons: { icon: "/vibecoder-logo.png", shortcut: "/vibecoder-logo.png", apple: "/vibecoder-logo.png" },
 };

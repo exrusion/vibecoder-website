@@ -12,7 +12,7 @@ export async function GET() {
   let user = await getCreditUser(xUserId);
   if (!user) return Response.json({ authenticated: false, configured }, { status: 401 });
   let holder = {
-    configured: Boolean(process.env.VIBECODER_TOKEN_MINT),
+    configured: Boolean(process.env.VIBEKIT_TOKEN_MINT || process.env.VIBECODER_TOKEN_MINT),
     eligible: false,
     holding: "0",
     threshold: HOLDER_THRESHOLD_TOKENS.toString(),

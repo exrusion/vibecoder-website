@@ -58,12 +58,12 @@ export async function POST(request: Request) {
     if (!ADDRESS.test(wallet) || bs58.decode(wallet).length !== 32) return Response.json({ error: "Invalid wallet address." }, { status: 400 });
     if (action === "challenge") {
       const expiry = Date.now() + 5 * 60_000;
-      const message = ["VibeCoder holder gate", "Gate: " + id, "Wallet: " + wallet, "Nonce: " + randomUUID(), "Expires: " + expiry].join("\n");
+      const message = ["Vibekit holder gate", "Gate: " + id, "Wallet: " + wallet, "Nonce: " + randomUUID(), "Expires: " + expiry].join("\n");
       return Response.json({ message, mac: sign(message), expiresAt: expiry });
     }
     if (action !== "unlock") return Response.json({ error: "Unknown gate action." }, { status: 400 });
     const message = String(body.message || "");
-    if (!message.startsWith("VibeCoder holder gate\nGate: " + id + "\nWallet: " + wallet + "\nNonce: ")
+    if (!message.startsWith("Vibekit holder gate\nGate: " + id + "\nWallet: " + wallet + "\nNonce: ")
       || !validMac(message, String(body.mac || ""))) return Response.json({ error: "Invalid gate challenge." }, { status: 400 });
     const expiry = Number(message.split("\nExpires: ")[1]);
     if (!Number.isFinite(expiry) || expiry < Date.now() || expiry > Date.now() + 5 * 60_000) return Response.json({ error: "Gate challenge expired." }, { status: 400 });

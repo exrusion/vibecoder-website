@@ -128,7 +128,7 @@ export async function createWalletChallenge(xUserId: string, walletAddress: stri
   const nonce = crypto.randomUUID();
   const expires = new Date(Date.now() + 5 * 60_000);
   const message = [
-    "VibeCoder wallet verification",
+    "Vibekit wallet verification",
     `X account: ${xUserId}`,
     `Wallet: ${walletAddress}`,
     `Nonce: ${nonce}`,
@@ -172,7 +172,7 @@ type ParsedTokenAccount = {
 };
 
 export async function getHolderBalance(walletAddress: string) {
-  const mint = process.env.VIBECODER_TOKEN_MINT?.trim();
+  const mint = (process.env.VIBEKIT_TOKEN_MINT || process.env.VIBECODER_TOKEN_MINT)?.trim();
   if (!mint) return { configured: false as const, eligible: false, holding: "0", threshold: HOLDER_THRESHOLD_TOKENS.toString() };
   const rpcUrl = process.env.SOLANA_RPC_URL?.trim() || "https://api.mainnet-beta.solana.com";
   const response = await fetch(rpcUrl, {

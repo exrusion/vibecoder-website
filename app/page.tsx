@@ -66,7 +66,7 @@ const starterIdeas = [
 ];
 
 const initialProjects: Project[] = [
-  { id: "mochi-club", name: "Mochi Club", prompt: "A playful token home with a live chart and roadmap", ticker: "$MOCHI", accent: "#98c8ff", theme: "light", updated: "18 min ago", published: "mochi.vibecoder.website" },
+  { id: "mochi-club", name: "Mochi Club", prompt: "A playful token home with a live chart and roadmap", ticker: "$MOCHI", accent: "#98c8ff", theme: "light", updated: "18 min ago", published: "mochi.vibekit.io" },
   { id: "feral-dashboard", name: "Feral Dashboard", prompt: "A holder dashboard with treasury and community activity", ticker: "$FERAL", accent: "#9fd4a1", theme: "dark", updated: "Yesterday" },
 ];
 
@@ -251,6 +251,7 @@ export default function Home() {
   const [publishOpen, setPublishOpen] = useState(false);
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [creditStatus, setCreditStatus] = useState<CreditStatus | null>(null);
+  const [walletAddress, setWalletAddress] = useState("");
   const [walletBusy, setWalletBusy] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [publishSlug, setPublishSlug] = useState("mochi");
@@ -262,23 +263,27 @@ export default function Home() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem("vibecoder-projects");
+    const saved = window.localStorage.getItem("vibekit-projects") || window.localStorage.getItem("vibecoder-projects");
     if (saved) {
       try {
         // Hydrate projects once from the browser-only workspace cache.
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setProjects(JSON.parse(saved));
       } catch {
-        window.localStorage.removeItem("vibecoder-projects");
+        window.localStorage.removeItem("vibekit-projects");
       }
     }
   }, []);
-  useEffect(() => { window.localStorage.setItem("vibecoder-projects", JSON.stringify(projects)); }, [projects]);
+  useEffect(() => { window.localStorage.setItem("vibekit-projects", JSON.stringify(projects)); }, [projects]);
 
   const refreshCredits = async () => {
     try {
       const response = await fetch("/api/credits", { cache: "no-store" });
-      if (response.ok) setCreditStatus(await response.json() as CreditStatus);
+      if (response.ok) {
+        const status = await response.json() as CreditStatus;
+        setCreditStatus(status);
+        if (status.user?.walletAddress) setWalletAddress(status.user.walletAddress);
+      }
     } catch { /* The builder remains usable with a personal key when account services are unavailable. */ }
   };
 
@@ -306,7 +311,7 @@ export default function Home() {
 
   const startBuild = async (override?: string) => {
     const request = override || effectivePrompt;
-    if (!request.trim()) { toast.error(source === "import" ? "Paste a token address or website first." : "Tell VibeCoder what you want to build."); return; }
+    if (!request.trim()) { toast.error(source === "import" ? "Paste a token address or website first." : "Tell Vibekit what you want to build."); return; }
     setIsBuilding(true);
     let inferred: Partial<Project> & ReturnType<typeof inferProject> = inferProject(request, importValue);
     try {
@@ -364,7 +369,7 @@ export default function Home() {
   const remix = (name: string, type: string) => { setMainView("create"); setWorkspaceOpen(false); setSource("prompt"); setPrompt(`Remix ${name} into a ${type.toLowerCase()} for my Solana token community`); window.scrollTo({ top: 0, behavior: "smooth" }); toast.success("Remix loaded into the builder"); };
   const publish = () => {
     if (!publishSlug.trim()) return; setPublishing(true);
-    window.setTimeout(() => { const url = `${slugify(publishSlug)}.vibecoder.website`; setPublishedUrl(url); setCurrent(project => ({ ...project, published: url })); setProjects(items => items.map(item => item.id === current.id ? { ...item, published: url } : item)); setPublishing(false); toast.success("Your site is live"); }, 900);
+    window.setTimeout(() => { const url = `${slugify(publishSlug)}.vibekit.io`; setPublishedUrl(url); setCurrent(project => ({ ...project, published: url })); setProjects(items => items.map(item => item.id === current.id ? { ...item, published: url } : item)); setPublishing(false); toast.success("Your site is live"); }, 900);
   };
   const copy = async (value: string) => { await navigator.clipboard?.writeText(value); toast.success("Copied"); };
   const downloadCode = () => { const blob = new Blob([code], { type: "text/plain" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `${slugify(current.name)}-site.tsx`; link.click(); URL.revokeObjectURL(link.href); toast.success("Code exported"); };
@@ -379,6 +384,12 @@ export default function Home() {
     try {
       const connection = await provider.connect();
       const wallet = connection.publicKey.toString();
+      setWalletAddress(wallet);
+      if (!creditStatus?.authenticated) {
+        setCreditsOpen(true);
+        toast.success("Wallet connected. Connect X to activate holder rewards.");
+        return;
+      }
       const challengeResponse = await fetch("/api/wallet/challenge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wallet }) });
       const challenge = await challengeResponse.json() as { message?: string; error?: string };
       if (!challengeResponse.ok || !challenge.message) throw new Error(challenge.error || "Could not create the wallet request.");
@@ -403,7 +414,7 @@ export default function Home() {
       await context.registerTool({
         name: "start_site_build",
         title: "Build a Solana community site",
-        description: "Start a new VibeCoder website from a plain-language description and open the generated preview.",
+        description: "Start a new Vibekit website from a plain-language description and open the generated preview.",
         inputSchema: { type: "object", properties: { prompt: { type: "string", minLength: 3 } }, required: ["prompt"], additionalProperties: false },
         annotations: { readOnlyHint: false, untrustedContentHint: false },
         async execute(input) {
@@ -416,7 +427,7 @@ export default function Home() {
       await context.registerTool({
         name: "open_remix_gallery",
         title: "Open the remix gallery",
-        description: "Open VibeCoder's community project gallery so a design can be selected and remixed.",
+        description: "Open Vibekit's community project gallery so a design can be selected and remixed.",
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
         annotations: { readOnlyHint: false, untrustedContentHint: false },
         async execute() { setWorkspaceOpen(false); setMainView("gallery"); return { view: "gallery", projects: galleryItems.length }; },
@@ -431,7 +442,7 @@ export default function Home() {
   return <main className="app-shell">
     <div className="ambient ambient-one" /><div className="ambient ambient-two" />
     <aside className={`side-rail ${mobileNavOpen ? "side-rail-open" : ""}`}>
-      <div className="brand-row"><BrandMark /><span>VibeCoder</span><button className="mobile-close" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation"><X /></button></div>
+      <div className="brand-row"><BrandMark /><span>Vibekit</span><button className="mobile-close" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation"><X /></button></div>
       <nav className="primary-nav" aria-label="Main navigation">
         <button className={mainView === "create" ? "active" : ""} onClick={() => { setMainView("create"); setWorkspaceOpen(false); setMobileNavOpen(false); }}><Plus /><span>Create</span></button>
         <button className={mainView === "projects" ? "active" : ""} onClick={() => { setMainView("projects"); setWorkspaceOpen(false); setMobileNavOpen(false); }}><Folder /><span>Projects</span><b>{projects.length}</b></button>
@@ -445,8 +456,8 @@ export default function Home() {
     <section className="main-frame">
       <header className="top-bar">
         <button className="mobile-menu" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation"><Menu /></button>
-        <p>{workspaceOpen ? current.name : mainView === "gallery" ? "Made with VibeCoder" : mainView === "projects" ? "Your workspace" : mainView === "tools" ? "Creator tools" : "AI SITE BUILDER FOR SOLANA"}</p>
-        <div className="top-actions"><button className="search-button" aria-label="Search"><Search /></button><div className="network-state"><i /> Mainnet</div>{creditStatus?.authenticated ? <Button className="wallet-button credit-balance-button" onClick={() => setCreditsOpen(true)}><Coins /> {compactCredits(creditStatus.user?.balance)} tokens</Button> : <Button className="wallet-button" onClick={connectX}><span className="x-mark">𝕏</span> Connect X</Button>}</div>
+        <p>{workspaceOpen ? current.name : mainView === "gallery" ? "Made with Vibekit" : mainView === "projects" ? "Your workspace" : mainView === "tools" ? "Creator tools" : "AI SITE BUILDER FOR SOLANA"}</p>
+        <div className="top-actions"><button className="search-button" aria-label="Search"><Search /></button><div className="network-state"><i /> Mainnet</div><Button variant="outline" className="wallet-connect-button" onClick={connectHolderWallet} disabled={walletBusy}>{walletBusy ? <LoaderCircle className="spin" /> : <Wallet />} {walletAddress ? shortAddress(walletAddress) : "Connect wallet"}</Button>{creditStatus?.authenticated ? <Button className="wallet-button credit-balance-button" onClick={() => setCreditsOpen(true)}><Coins /> {compactCredits(creditStatus.user?.balance)} tokens</Button> : <Button className="wallet-button" onClick={connectX}><span className="x-mark">𝕏</span> Connect X</Button>}</div>
       </header>
 
       {workspaceOpen ? <section className="workspace">
@@ -457,18 +468,18 @@ export default function Home() {
         </header>
         <div className="workspace-body">
           <aside className="chat-panel">
-            <div className="chat-heading"><div><WandSparkles /><span>VibeCoder AI</span></div><button aria-label="More options"><MoreHorizontal /></button></div>
+            <div className="chat-heading"><div><WandSparkles /><span>Vibekit AI</span></div><button aria-label="More options"><MoreHorizontal /></button></div>
             <div className="chat-messages"><div className="build-summary"><span>VERSION {version}</span><strong>{current.name}</strong><p>{current.prompt}</p></div>{messages.map((message,index) => <div key={`${message.role}-${index}`} className={`message message-${message.role}`}>{message.role === "assistant" && <BrandMark small />}<p>{message.text}</p></div>)}</div>
             <div className="quick-edits"><button onClick={() => setEditPrompt("Make it dark and more cinematic")}><Palette /> Darker</button><button onClick={() => setEditPrompt("Make the accent green")}><Sparkles /> New color</button><button onClick={() => setEditPrompt("Add a community game section")}><Gamepad2 /> Add game</button></div>
             <div className="edit-composer"><Textarea value={editPrompt} onChange={e => setEditPrompt(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); applyEdit(); } }} placeholder="Ask for any change..." aria-label="Ask for a website edit" /><button onClick={applyEdit} aria-label="Apply edit" disabled={!editPrompt.trim()}><ArrowUp /></button></div>
           </aside>
           <section className="canvas-panel">
-            <div className="canvas-top"><div className="browser-dots"><i /><i /><i /></div><div className="preview-url"><Globe2 /><span>{publishedUrl || `${slugify(current.name)}.preview.vibecoder.website`}</span><button onClick={() => copy(publishedUrl || `${slugify(current.name)}.preview.vibecoder.website`)} aria-label="Copy preview URL"><Copy /></button></div><div className="device-switch"><button className={device === "desktop" ? "active" : ""} onClick={() => setDevice("desktop")} aria-label="Desktop preview"><Monitor /></button><button className={device === "mobile" ? "active" : ""} onClick={() => setDevice("mobile")} aria-label="Mobile preview"><Smartphone /></button></div></div>
+            <div className="canvas-top"><div className="browser-dots"><i /><i /><i /></div><div className="preview-url"><Globe2 /><span>{publishedUrl || `${slugify(current.name)}.preview.vibekit.io`}</span><button onClick={() => copy(publishedUrl || `${slugify(current.name)}.preview.vibekit.io`)} aria-label="Copy preview URL"><Copy /></button></div><div className="device-switch"><button className={device === "desktop" ? "active" : ""} onClick={() => setDevice("desktop")} aria-label="Desktop preview"><Monitor /></button><button className={device === "mobile" ? "active" : ""} onClick={() => setDevice("mobile")} aria-label="Mobile preview"><Smartphone /></button></div></div>
             <div className={`canvas-stage ${device === "mobile" ? "canvas-mobile" : ""}`}>{previewMode === "preview" ? <div className="site-frame"><MiniSite project={current} mobile={device === "mobile"} /></div> : <div className="code-editor"><div className="code-tabs"><span>app/page.tsx</span><button onClick={downloadCode}><Download /> Download</button></div><Textarea value={code} onChange={e => setCode(e.target.value)} spellCheck={false} aria-label="Editable website code" /></div>}</div>
           </section>
         </div>
       </section> : mainView === "create" ? <section className="create-view">
-        <div className="create-heading"><span><Sparkles /> SOLANA, MEET YOUR SITE</span><h1>Build something<br /><em>worth joining.</em></h1><p>Describe it, import it, or show us the look. VibeCoder turns your idea into a real site for your token community.</p></div>
+        <div className="create-heading"><span><Sparkles /> SOLANA, MEET YOUR SITE</span><h1>Build something<br /><em>worth joining.</em></h1><p>Describe it, import it, or show us the look. Vibekit turns your idea into a real site for your token community.</p></div>
         <button className="credit-banner" onClick={() => creditStatus?.authenticated ? setCreditsOpen(true) : connectX()}><span><Gift /></span><div><strong>10M AI tokens, free with X</strong><small>Connect once and start building immediately.</small></div><b>Holders get 30M daily <ArrowRight /></b></button>
         <div className="builder-card"><Tabs value={source} onValueChange={value => setSource(value as BuilderSource)}>
           <TabsList className="source-tabs" variant="line"><TabsTrigger value="prompt"><Sparkles /> Start with a prompt</TabsTrigger><TabsTrigger value="import"><Link2 /> Import a project</TabsTrigger><TabsTrigger value="screenshot"><ImageIcon /> Screenshot to site</TabsTrigger></TabsList>
@@ -492,9 +503,9 @@ export default function Home() {
       </section>}
     </section>
 
-    <Dialog open={publishOpen} onOpenChange={setPublishOpen}><DialogContent className="publish-dialog"><DialogHeader><span className="dialog-icon"><Rocket /></span><DialogTitle>Give your site a home.</DialogTitle><DialogDescription>Publish this version now. You can keep editing after it goes live.</DialogDescription></DialogHeader>{publishedUrl ? <div className="published-card"><span><i /> LIVE</span><strong>{publishedUrl}</strong><div><Button variant="outline" onClick={() => copy(publishedUrl)}><Copy /> Copy link</Button><Button onClick={() => toast.info("Opening your live site in a new tab")}>Visit site <ExternalLink /></Button></div></div> : <><label className="subdomain-label">Choose your free subdomain</label><div className="subdomain-field"><Input value={publishSlug} onChange={e => setPublishSlug(slugify(e.target.value))} aria-label="Subdomain" /><span>.vibecoder.website</span></div><div className="publish-checks"><span><Check /> SSL included</span><span><Check /> Instant updates</span><span><Check /> Custom domain ready</span></div><DialogFooter><Button className="publish-confirm" onClick={publish} disabled={publishing || !publishSlug}>{publishing ? <><LoaderCircle className="spin" /> Publishing</> : <>Publish site <ArrowRight /></>}</Button></DialogFooter></>}</DialogContent></Dialog>
+    <Dialog open={publishOpen} onOpenChange={setPublishOpen}><DialogContent className="publish-dialog"><DialogHeader><span className="dialog-icon"><Rocket /></span><DialogTitle>Give your site a home.</DialogTitle><DialogDescription>Publish this version now. You can keep editing after it goes live.</DialogDescription></DialogHeader>{publishedUrl ? <div className="published-card"><span><i /> LIVE</span><strong>{publishedUrl}</strong><div><Button variant="outline" onClick={() => copy(publishedUrl)}><Copy /> Copy link</Button><Button onClick={() => toast.info("Opening your live site in a new tab")}>Visit site <ExternalLink /></Button></div></div> : <><label className="subdomain-label">Choose your free subdomain</label><div className="subdomain-field"><Input value={publishSlug} onChange={e => setPublishSlug(slugify(e.target.value))} aria-label="Subdomain" /><span>.vibekit.io</span></div><div className="publish-checks"><span><Check /> SSL included</span><span><Check /> Instant updates</span><span><Check /> Custom domain ready</span></div><DialogFooter><Button className="publish-confirm" onClick={publish} disabled={publishing || !publishSlug}>{publishing ? <><LoaderCircle className="spin" /> Publishing</> : <>Publish site <ArrowRight /></>}</Button></DialogFooter></>}</DialogContent></Dialog>
 
-    <Dialog open={creditsOpen} onOpenChange={setCreditsOpen}><DialogContent className="credits-dialog"><DialogHeader><span className="credits-icon"><Coins /></span><DialogTitle>AI token balance</DialogTitle><DialogDescription>Build with VibeCoder credits. Your X grant is permanent and holder rewards refresh every UTC day.</DialogDescription></DialogHeader>{creditStatus?.authenticated ? <div className="credits-account">
+    <Dialog open={creditsOpen} onOpenChange={setCreditsOpen}><DialogContent className="credits-dialog"><DialogHeader><span className="credits-icon"><Coins /></span><DialogTitle>AI token balance</DialogTitle><DialogDescription>Build with Vibekit credits. Your X grant is permanent and holder rewards refresh every UTC day.</DialogDescription></DialogHeader>{creditStatus?.authenticated ? <div className="credits-account">
       <div className="credits-profile"><span>{(creditStatus.user?.displayName || creditStatus.user?.username || "X").charAt(0)}</span><div><strong>{creditStatus.user?.displayName || `@${creditStatus.user?.username}`}</strong><small>{creditStatus.user?.username ? `@${creditStatus.user.username}` : "Connected with X"}</small></div><b>{compactCredits(creditStatus.user?.balance)}<small>tokens left</small></b></div>
       <div className="credit-grant-grid"><article><Gift /><span>WELCOME GRANT</span><strong>10M</strong><small>One time with X</small></article><article><ShieldCheck /><span>HOLDER DROP</span><strong>30M</strong><small>Every UTC day</small></article><article><Coins /><span>HOLDING NEEDED</span><strong>10M</strong><small>1% of 1B supply</small></article></div>
       <div className={`holder-card ${creditStatus.holder?.eligible ? "holder-card-eligible" : ""}`}><div><span>{creditStatus.holder?.eligible ? <Check /> : <Wallet />}</span><p><strong>{creditStatus.user?.walletAddress ? shortAddress(creditStatus.user.walletAddress) : "Verify a holder wallet"}</strong><small>{!creditStatus.holder?.configured ? "Reward mint needs to be added in Railway" : creditStatus.holder?.eligible ? `${compactCredits(creditStatus.holder.holding)} held · daily reward active` : creditStatus.user?.walletAddress ? `${compactCredits(creditStatus.holder?.holding)} held · 10M required` : "Sign once with Phantom. No transaction or gas."}</small></p></div><Button variant={creditStatus.user?.walletAddress ? "outline" : "default"} onClick={connectHolderWallet} disabled={walletBusy}>{walletBusy ? <LoaderCircle className="spin" /> : <Wallet />} {creditStatus.user?.walletAddress ? "Change wallet" : "Connect Phantom"}</Button></div>
@@ -503,8 +514,8 @@ export default function Home() {
 
     <Sheet open={versionsOpen} onOpenChange={setVersionsOpen}><SheetContent className="history-sheet"><SheetHeader><SheetTitle>Version history</SheetTitle><SheetDescription>Every AI edit creates a version you can restore.</SheetDescription></SheetHeader><div className="version-list">{Array.from({ length: version },(_,index) => version-index).map((item,index) => <button key={item} className={index === 0 ? "current-version" : ""} onClick={() => { setVersion(item); setVersionsOpen(false); toast.success(`Restored version ${item}`); }}><span>v{item}</span><div><strong>{index === 0 ? "Current version" : `Design update ${item}`}</strong><small>{index === 0 ? "Just now" : `${index*8+4} min ago`}</small></div>{index === 0 ? <Check /> : <History />}</button>)}</div></SheetContent></Sheet>
 
-    <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}><SheetContent className="settings-sheet"><SheetHeader><SheetTitle>Builder settings</SheetTitle><SheetDescription>Choose how VibeCoder generates your sites.</SheetDescription></SheetHeader><div className="settings-content">
-      <div className="setting-block"><span>AI MODEL</span><button><div><Sparkles /><p><strong>VibeCoder Auto</strong><small>Best available model for each edit</small></p></div><Check /></button></div>
+    <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}><SheetContent className="settings-sheet"><SheetHeader><SheetTitle>Builder settings</SheetTitle><SheetDescription>Choose how Vibekit generates your sites.</SheetDescription></SheetHeader><div className="settings-content">
+      <div className="setting-block"><span>AI MODEL</span><button><div><Sparkles /><p><strong>Vibekit Auto</strong><small>Best available model for each edit</small></p></div><Check /></button></div>
       <div className="setting-block"><span>BRING YOUR OWN KEY</span><p>Use your own OpenRouter key for AI-generated names, copy and visual direction. It stays in this session.</p><Input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="Paste OpenRouter API key" aria-label="Personal AI API key" /><Button variant="outline" onClick={() => toast.success(apiKey ? "Key ready for this session" : "Add a key first")}>Use this key</Button></div>
       <div className="setting-block"><span>CODE & OWNERSHIP</span><Button variant="outline" onClick={() => toast.info("GitHub connection will open here")}><GitBranch /> Connect GitHub</Button><p className="ownership-note">Your sites and generated code stay exportable.</p></div>
     </div></SheetContent></Sheet>

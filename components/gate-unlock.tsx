@@ -45,6 +45,6 @@ export default function GateUnlock({ id }: { id: string }) {
     {info && <div className="gate-requirement"><span>Required balance</span><strong>{info.minimum} tokens</strong><code>{info.mint}</code></div>}
     {content ? <div className="gate-unlocked"><div>{content}</div>{info?.contentType === "download" && <button onClick={download}><Download /> Download unlocked file</button>}</div> : <button className="gate-cta" disabled={!info || busy} onClick={unlock}><Wallet /> {busy ? "Checking holder balance…" : "Connect Phantom & unlock"}</button>}
     {error && <p className="gate-error" role="alert">{error}</p>}
-    <Link className="gate-back" href="/">Made with VibeCoder ↗</Link>
+    <Link className="gate-back" href="/">Made with Vibekit ↗</Link>
   </div></main>;
 }

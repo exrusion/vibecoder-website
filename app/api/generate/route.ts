@@ -161,12 +161,12 @@ export async function POST(request: Request) {
     const model = await resolveModel(baseUrl, key);
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
-      headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json", "X-Title": "VibeCoder" },
+      headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json", "X-Title": "Vibekit" },
       body: JSON.stringify({
         model,
         max_tokens: 900,
         messages: [
-          { role: "system", content: "You are the design director for VibeCoder, a Solana community site builder. Return only valid JSON with these keys: name, ticker, headline, subline, accent, theme. Keep the headline under 8 words, the subline under 20 words, accent as a six-digit hex color, and theme as light or dark. When verified token metadata is supplied, copy its name and ticker exactly." },
+          { role: "system", content: "You are the design director for Vibekit, a Solana community site builder. Return only valid JSON with these keys: name, ticker, headline, subline, accent, theme. Keep the headline under 8 words, the subline under 20 words, accent as a six-digit hex color, and theme as light or dark. When verified token metadata is supplied, copy its name and ticker exactly." },
           { role: "user", content: `Website request: ${body.prompt}\nToken address: ${typeof body.tokenAddress === "string" ? body.tokenAddress : "none"}\nImported project: ${typeof body.importValue === "string" ? body.importValue : "none"}\nVerified token metadata: ${tokenMetadata ? JSON.stringify(tokenMetadata) : "none"}` },
         ],
       }),
