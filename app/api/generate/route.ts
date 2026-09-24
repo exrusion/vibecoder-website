@@ -31,6 +31,12 @@ function findTokenAddress(...values: unknown[]) {
   return "";
 }
 
+function normalizeAssetUrl(value: unknown) {
+  const url = String(value || "");
+  const ipfsMatch = url.match(/^https?:\/\/ipfs\.io\/ipfs\/(.+)$/i);
+  return ipfsMatch ? `https://ipfs.filebase.io/ipfs/${ipfsMatch[1]}` : url;
+}
+
 async function resolveToken(address: string): Promise<TokenMetadata | null> {
   if (!SOLANA_ADDRESS.test(address)) return null;
   const [pumpResult, dexResult, jupiterResult] = await Promise.allSettled([
@@ -62,7 +68,7 @@ async function resolveToken(address: string): Promise<TokenMetadata | null> {
     name: name || symbol,
     ticker: symbol ? `$${symbol.replace(/^\$/, "")}` : `$${name.slice(0, 8).toUpperCase()}`,
     contractAddress: address,
-    imageUrl: String(pump.image_uri || jupiter.icon || info?.imageUrl || "") || undefined,
+    imageUrl: normalizeAssetUrl(pump.image_uri || jupiter.icon || info?.imageUrl) || undefined,
     description: String(pump.description || "") || undefined,
     website: String(pump.website || info?.websites?.[0]?.url || "") || undefined,
     twitter: String(pump.twitter || (twitterSocial ? `https://x.com/${twitterSocial.replace(/^@/, "")}` : "")) || undefined,
