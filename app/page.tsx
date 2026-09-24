@@ -300,7 +300,8 @@ export default function Home() {
       try {
         // Hydrate projects once from the browser-only workspace cache.
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        setProjects(JSON.parse(saved));
+        const restored = JSON.parse(saved) as Project[];
+        setProjects(restored.map(project => ({ ...project, published: project.published?.startsWith("https://vibekit.io/s/") ? project.published : undefined })));
       } catch {
         window.localStorage.removeItem("vibekit-projects");
       }
@@ -365,7 +366,7 @@ export default function Home() {
       if (generated.creditsRemaining) setCreditStatus(status => status?.user ? { ...status, user: { ...status.user, balance: generated.creditsRemaining || status.user.balance } } : status);
       setCurrent(next); setCode(generated.html);
       setMessages([{ role: "user", text: request }, { role: "assistant", text: `I built a custom site for ${next.name}. You can ask me to change any part of its design or code.` }]);
-      setProjects(items => [next, ...items]); setPublishSlug(slugify(next.name)); setVersion(1); setWorkspaceOpen(true); window.scrollTo({ top: 0, behavior: "smooth" });
+      setProjects(items => [next, ...items]); setPublishedUrl(""); setPublishSlug(slugify(next.name)); setVersion(1); setWorkspaceOpen(true); window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "The AI could not build this site.");
     } finally { setIsBuilding(false); }
