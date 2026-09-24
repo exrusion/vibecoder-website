@@ -73,6 +73,8 @@ button,input,textarea { font: inherit; } button { cursor: pointer; }
 .workspace{overflow:hidden}
 .canvas-panel{min-height:0;overflow:hidden}
 .canvas-stage{height:0;align-items:flex-start;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.generated-site-frame{display:block;width:100%;height:min(1100px,calc(100vh - 230px));min-height:600px;border:0;background:#fff}
+@media(max-width:760px){.generated-site-frame{height:calc(100vh - 235px);min-height:480px}}
 .mini-token-orb{width:29px;height:29px;overflow:hidden}.mini-token-orb img{width:100%;height:100%;object-fit:cover}
 .mini-copy h2{font-size:clamp(42px,4.8vw,70px);line-height:.91}
 .token-coin-image{overflow:hidden;background:#111}.token-coin-image img{width:100%;height:100%;object-fit:cover}.token-coin-image::after{inset:5%}

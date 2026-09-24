@@ -26,7 +26,7 @@ type MainView = "create" | "projects" | "gallery" | "tools";
 type BuilderSource = "prompt" | "import" | "screenshot";
 type PreviewMode = "preview" | "code";
 type DeviceMode = "desktop" | "mobile";
-type Project = ToolProject & { id: string; prompt: string; theme: "light" | "dark"; updated: string; published?: string; headline?: string; subline?: string; description?: string };
+type Project = ToolProject & { id: string; prompt: string; theme: "light" | "dark"; updated: string; published?: string; headline?: string; subline?: string; description?: string; sourceHtml?: string };
 type ChatMessage = { role: "user" | "assistant"; text: string };
 type CreditStatus = {
   authenticated: boolean;
@@ -169,6 +169,12 @@ export default function ${project.name.replace(/\s/g, "")}() {
     </main>
   );
 }`;
+}
+
+function previewDocument(html: string) {
+  // Generated code runs in an opaque-origin sandbox; this policy also blocks network calls and external scripts.
+  const policy = "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src https: data: blob:; script-src 'unsafe-inline'; frame-src https://dexscreener.com; media-src https: data:; connect-src 'none'; form-action 'none'; base-uri 'none'";
+  return `<!doctype html><meta http-equiv="Content-Security-Policy" content="${policy}">${html}`;
 }
 
 function SiteGame({ project }: { project: Project }) {
@@ -320,31 +326,30 @@ export default function Home() {
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (apiKey.trim()) headers["x-openrouter-key"] = apiKey.trim();
-      const [response] = await Promise.all([
-        fetch("/api/generate", { method: "POST", headers, body: JSON.stringify({ prompt: request, tokenAddress, importValue }) }),
-        new Promise(resolve => window.setTimeout(resolve, 850)),
-      ]);
+      const response = await fetch("/api/generate", { method: "POST", headers, body: JSON.stringify({ prompt: request, tokenAddress, importValue }) });
       const data = await response.json().catch(() => ({})) as { site?: Partial<Project>; error?: string; code?: string; creditsRemaining?: string };
       if (!response.ok) {
         if (response.status === 401 || data.code === "AUTH_REQUIRED") setCreditsOpen(true);
         if (response.status === 402 || data.code === "INSUFFICIENT_CREDITS") setCreditsOpen(true);
-        toast.error(data.error || "The site could not be generated.");
-        setIsBuilding(false);
-        return;
+        throw new Error(data.error || "The site could not be generated.");
       }
-      if (response.ok) {
-        if (data.site) {
-          inferred = { ...inferred, ...data.site };
-        }
-        if (data.creditsRemaining) setCreditStatus(status => status?.user ? { ...status, user: { ...status.user, balance: data.creditsRemaining || status.user.balance } } : status);
+      if (data.site) inferred = { ...inferred, ...data.site };
+      if (data.creditsRemaining) setCreditStatus(status => status?.user ? { ...status, user: { ...status.user, balance: data.creditsRemaining || status.user.balance } } : status);
+      const next: Project = { ...inferred, id: `${slugify(inferred.name || "project")}-${Date.now()}`, name: inferred.name || "Untitled project", prompt: request, ticker: inferred.ticker || "$TOKEN", accent: inferred.accent || "#7c5cff", theme: inferred.theme || "dark", updated: "Just now" };
+      const codeResponse = await fetch("/api/site-code", { method: "POST", headers, body: JSON.stringify({ mode: "create", prompt: request, project: next }) });
+      const generated = await codeResponse.json().catch(() => ({})) as { html?: string; error?: string; code?: string; creditsRemaining?: string };
+      if (!codeResponse.ok || !generated.html) {
+        if (codeResponse.status === 401 || codeResponse.status === 402) setCreditsOpen(true);
+        throw new Error(generated.error || "The AI could not create the website code.");
       }
-    } catch { /* The local design engine remains available when an AI provider is not configured. */ }
-    const next: Project = { ...inferred, id: `${slugify(inferred.name || "project")}-${Date.now()}`, name: inferred.name || "Untitled project", prompt: request, ticker: inferred.ticker || "$TOKEN", accent: inferred.accent || "#7c5cff", theme: inferred.theme || "dark", updated: "Just now" };
-    window.setTimeout(() => {
-      setCurrent(next); setCode(projectCode(next));
-      setMessages([{ role: "user", text: request }, { role: "assistant", text: `I built ${next.name} with a responsive token home, live market section and community links.` }]);
-      setProjects(items => [next, ...items]); setPublishSlug(slugify(next.name)); setVersion(1); setWorkspaceOpen(true); setIsBuilding(false); window.scrollTo({ top: 0, behavior: "smooth" });
-    }, 180);
+      next.sourceHtml = generated.html;
+      if (generated.creditsRemaining) setCreditStatus(status => status?.user ? { ...status, user: { ...status.user, balance: generated.creditsRemaining || status.user.balance } } : status);
+      setCurrent(next); setCode(generated.html);
+      setMessages([{ role: "user", text: request }, { role: "assistant", text: `I built a custom site for ${next.name}. You can ask me to change any part of its design or code.` }]);
+      setProjects(items => [next, ...items]); setPublishSlug(slugify(next.name)); setVersion(1); setWorkspaceOpen(true); window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The AI could not build this site.");
+    } finally { setIsBuilding(false); }
   };
 
   const handleScreenshot = (event: ChangeEvent<HTMLInputElement>) => {
@@ -359,28 +364,30 @@ export default function Home() {
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (apiKey.trim()) headers["x-openrouter-key"] = apiKey.trim();
-      const response = await fetch("/api/tools/ai", { method: "POST", headers, body: JSON.stringify({ kind: "edit", prompt: request, context: JSON.stringify(current) }) });
-      const payload = await response.json() as { result?: { changes?: Partial<Project>; summary?: string }; error?: string; creditsRemaining?: string };
+      const response = await fetch("/api/site-code", { method: "POST", headers, body: JSON.stringify({ mode: "edit", prompt: request, project: { ...current, sourceHtml: undefined }, html: current.sourceHtml || projectCode(current), history: messages }) });
+      const payload = await response.json() as { html?: string; reply?: string; changed?: boolean; error?: string; creditsRemaining?: string };
       if (!response.ok) throw new Error(payload.error || "The AI edit failed. Please try again.");
-      const changes = payload.result?.changes || {};
-      if (!Object.keys(changes).length) throw new Error(payload.result?.summary || "That change isn't supported by this editor yet.");
-      const next: Project = { ...current, ...changes, id: current.id, updated: "Just now" };
-      setMessages(items => [...items, { role: "user", text: request }, { role: "assistant", text: payload.result?.summary || "I updated the requested fields." }]);
-      setCurrent(next); setCode(projectCode(next)); setProjects(items => items.map(item => item.id === next.id ? next : item)); setVersion(value => value + 1); setEditPrompt("");
+      if (!payload.html) throw new Error("The AI returned no website code.");
+      setMessages(items => [...items, { role: "user", text: request }, { role: "assistant", text: payload.reply || "I updated the website. Check the preview and tell me what to refine." }]);
+      if (payload.changed !== false) {
+        const next: Project = { ...current, sourceHtml: payload.html, updated: "Just now" };
+        setCurrent(next); setCode(payload.html); setProjects(items => items.map(item => item.id === next.id ? next : item)); setVersion(value => value + 1);
+      }
+      setEditPrompt("");
       if (payload.creditsRemaining) setCreditStatus(status => status?.user ? { ...status, user: { ...status.user, balance: payload.creditsRemaining || status.user.balance } } : status);
-      toast.success("Website updated");
+      if (payload.changed !== false) toast.success("Website updated");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "The AI edit failed. Please try again.");
     } finally { setIsEditing(false); }
   };
 
   const openProject = (project: Project) => {
-    setCurrent(project); setCode(projectCode(project)); setMessages([{ role: "assistant", text: `${project.name} is ready. Tell me what you want to change.` }]); setPublishSlug(slugify(project.name)); setPublishedUrl(project.published || ""); setWorkspaceOpen(true); setMainView("create"); window.scrollTo({ top: 0, behavior: "smooth" });
+    setCurrent(project); setCode(project.sourceHtml || projectCode(project)); setMessages([{ role: "assistant", text: `${project.name} is ready. Tell me what you want to change.` }]); setPublishSlug(slugify(project.name)); setPublishedUrl(project.published || ""); setWorkspaceOpen(true); setMainView("create"); window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const updateToolProject = (patch: Partial<ToolProject>) => {
     const next = { ...current, ...patch, updated: "Just now" };
     setCurrent(next); setProjects(items => items.map(item => item.id === next.id ? next : item));
-    setCode(projectCode(next)); setVersion(value => value + 1);
+    setCode(next.sourceHtml || projectCode(next)); setVersion(value => value + 1);
   };
   const remix = (name: string, type: string) => { setMainView("create"); setWorkspaceOpen(false); setSource("prompt"); setPrompt(`Remix ${name} into a ${type.toLowerCase()} for my Solana token community`); window.scrollTo({ top: 0, behavior: "smooth" }); toast.success("Remix loaded into the builder"); };
   const publish = () => {
@@ -388,7 +395,7 @@ export default function Home() {
     window.setTimeout(() => { const url = `${slugify(publishSlug)}.vibekit.io`; setPublishedUrl(url); setCurrent(project => ({ ...project, published: url })); setProjects(items => items.map(item => item.id === current.id ? { ...item, published: url } : item)); setPublishing(false); toast.success("Your site is live"); }, 900);
   };
   const copy = async (value: string) => { await navigator.clipboard?.writeText(value); toast.success("Copied"); };
-  const downloadCode = () => { const blob = new Blob([code], { type: "text/plain" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `${slugify(current.name)}-site.tsx`; link.click(); URL.revokeObjectURL(link.href); toast.success("Code exported"); };
+  const downloadCode = () => { const blob = new Blob([code], { type: current.sourceHtml ? "text/html" : "text/plain" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `${slugify(current.name)}-site.${current.sourceHtml ? "html" : "tsx"}`; link.click(); URL.revokeObjectURL(link.href); toast.success("Code exported"); };
   const connectX = () => {
     if (creditStatus?.configured === false) { setCreditsOpen(true); toast.info("X login is waiting for its two Railway credentials."); return; }
     setXLoginBusy(true);
@@ -495,7 +502,7 @@ export default function Home() {
           </aside>
           <section className="canvas-panel">
             <div className="canvas-top"><div className="browser-dots"><i /><i /><i /></div><div className="preview-url"><Globe2 /><span>{publishedUrl || `${slugify(current.name)}.preview.vibekit.io`}</span><button onClick={() => copy(publishedUrl || `${slugify(current.name)}.preview.vibekit.io`)} aria-label="Copy preview URL"><Copy /></button></div><div className="device-switch"><button className={device === "desktop" ? "active" : ""} onClick={() => setDevice("desktop")} aria-label="Desktop preview"><Monitor /></button><button className={device === "mobile" ? "active" : ""} onClick={() => setDevice("mobile")} aria-label="Mobile preview"><Smartphone /></button></div></div>
-            <div className={`canvas-stage ${device === "mobile" ? "canvas-mobile" : ""}`}>{previewMode === "preview" ? <div className="site-frame"><MiniSite project={current} mobile={device === "mobile"} /></div> : <div className="code-editor"><div className="code-tabs"><span>app/page.tsx</span><button onClick={downloadCode}><Download /> Download</button></div><Textarea value={code} onChange={e => setCode(e.target.value)} spellCheck={false} aria-label="Editable website code" /></div>}</div>
+            <div className={`canvas-stage ${device === "mobile" ? "canvas-mobile" : ""}`}>{previewMode === "preview" ? <div className="site-frame">{current.sourceHtml ? <iframe className="generated-site-frame" title={`${current.name} website preview`} sandbox="allow-scripts" srcDoc={previewDocument(code)} /> : <MiniSite project={current} mobile={device === "mobile"} />}</div> : <div className="code-editor"><div className="code-tabs"><span>{current.sourceHtml ? "index.html" : "app/page.tsx"}</span><button onClick={downloadCode}><Download /> Download</button></div><Textarea value={code} onChange={e => { const nextCode = e.target.value; setCode(nextCode); if (current.sourceHtml) { const next = { ...current, sourceHtml: nextCode, updated: "Just now" }; setCurrent(next); setProjects(items => items.map(item => item.id === next.id ? next : item)); } }} spellCheck={false} aria-label="Editable website code" /></div>}</div>
           </section>
         </div>
       </section> : mainView === "create" ? <section className="create-view">
