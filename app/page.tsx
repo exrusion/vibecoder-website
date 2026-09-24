@@ -9,7 +9,8 @@ import {
   Sparkles, Undo2, Upload, Wallet, WandSparkles, X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { signIn, signOut } from "next-auth/react";
+import { signOut } from "next-auth/react";
+import { startXSignIn } from "@/lib/x-signin";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -251,6 +252,7 @@ export default function Home() {
   const [publishOpen, setPublishOpen] = useState(false);
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [creditStatus, setCreditStatus] = useState<CreditStatus | null>(null);
+  const [xLoginBusy, setXLoginBusy] = useState(false);
   const [walletAddress, setWalletAddress] = useState("");
   const [walletBusy, setWalletBusy] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -375,7 +377,11 @@ export default function Home() {
   const downloadCode = () => { const blob = new Blob([code], { type: "text/plain" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `${slugify(current.name)}-site.tsx`; link.click(); URL.revokeObjectURL(link.href); toast.success("Code exported"); };
   const connectX = () => {
     if (creditStatus?.configured === false) { setCreditsOpen(true); toast.info("X login is waiting for its two Railway credentials."); return; }
-    void signIn("twitter", { redirectTo: "/" });
+    setXLoginBusy(true);
+    void startXSignIn("/").catch(() => {
+      setXLoginBusy(false);
+      toast.error("Could not start X login. Please try again.");
+    });
   };
   const connectHolderWallet = async () => {
     const provider = (window as Window & { solana?: PhantomProvider }).solana;
@@ -457,7 +463,7 @@ export default function Home() {
       <header className="top-bar">
         <button className="mobile-menu" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation"><Menu /></button>
         <p>{workspaceOpen ? current.name : mainView === "gallery" ? "Made with Vibekit" : mainView === "projects" ? "Your workspace" : mainView === "tools" ? "Creator tools" : "AI SITE BUILDER FOR SOLANA"}</p>
-        <div className="top-actions"><button className="search-button" aria-label="Search"><Search /></button><div className="network-state"><i /> Mainnet</div><Button variant="outline" className="wallet-connect-button" onClick={connectHolderWallet} disabled={walletBusy}>{walletBusy ? <LoaderCircle className="spin" /> : <Wallet />} {walletAddress ? shortAddress(walletAddress) : "Connect wallet"}</Button>{creditStatus?.authenticated ? <Button className="wallet-button credit-balance-button" onClick={() => setCreditsOpen(true)}><Coins /> {compactCredits(creditStatus.user?.balance)} tokens</Button> : <Button className="wallet-button" onClick={connectX}><span className="x-mark">𝕏</span> Connect X</Button>}</div>
+        <div className="top-actions"><button className="search-button" aria-label="Search"><Search /></button><div className="network-state"><i /> Mainnet</div><Button variant="outline" className="wallet-connect-button" onClick={connectHolderWallet} disabled={walletBusy}>{walletBusy ? <LoaderCircle className="spin" /> : <Wallet />} {walletAddress ? shortAddress(walletAddress) : "Connect wallet"}</Button>{creditStatus?.authenticated ? <Button className="wallet-button credit-balance-button" onClick={() => setCreditsOpen(true)}><Coins /> {compactCredits(creditStatus.user?.balance)} tokens</Button> : <Button className="wallet-button" onClick={connectX} disabled={xLoginBusy}><span className="x-mark">𝕏</span> {xLoginBusy ? "Connecting…" : "Connect X"}</Button>}</div>
       </header>
 
       {workspaceOpen ? <section className="workspace">
@@ -480,7 +486,7 @@ export default function Home() {
         </div>
       </section> : mainView === "create" ? <section className="create-view">
         <div className="create-heading"><span><Sparkles /> SOLANA, MEET YOUR SITE</span><h1>Build something<br /><em>worth joining.</em></h1><p>Describe it, import it, or show us the look. Vibekit turns your idea into a real site for your token community.</p></div>
-        <button className="credit-banner" onClick={() => creditStatus?.authenticated ? setCreditsOpen(true) : connectX()}><span><Gift /></span><div><strong>10M AI tokens, free with X</strong><small>Connect once and start building immediately.</small></div><b>Holders get 30M daily <ArrowRight /></b></button>
+        <button className="credit-banner" disabled={xLoginBusy} onClick={() => creditStatus?.authenticated ? setCreditsOpen(true) : connectX()}><span><Gift /></span><div><strong>10M AI tokens, free with X</strong><small>Connect once and start building immediately.</small></div><b>Holders get 30M daily <ArrowRight /></b></button>
         <div className="builder-card"><Tabs value={source} onValueChange={value => setSource(value as BuilderSource)}>
           <TabsList className="source-tabs" variant="line"><TabsTrigger value="prompt"><Sparkles /> Start with a prompt</TabsTrigger><TabsTrigger value="import"><Link2 /> Import a project</TabsTrigger><TabsTrigger value="screenshot"><ImageIcon /> Screenshot to site</TabsTrigger></TabsList>
           <TabsContent value="prompt" className="source-content"><Textarea value={prompt} onChange={e => setPrompt(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); startBuild(); } }} placeholder="Make a playful website for a frog token with a live chart, a roadmap and a weekly community game..." aria-label="Describe the website to build" /></TabsContent>

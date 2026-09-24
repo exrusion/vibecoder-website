@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { signIn } from "next-auth/react";
+import { startXSignIn } from "@/lib/x-signin";
 import { ArrowUpRight, Check, Trophy, X } from "lucide-react";
 
 type Task = { id: string; label: string; url: string; points: number };
@@ -39,7 +39,7 @@ export default function RaidBoard({ id }: { id: string }) {
   };
   return <main className="gate-screen raid-screen"><div className="raid-box"><span className="gate-eyebrow">VIBECODER / COMMUNITY RAIDS</span>
     <h1>{board?.name || "Community raid board"}</h1><p>Complete a task, paste a public proof link, and wait for the creator to review it. Points are added only after approval.</p>
-    {error && <div className="gate-error" role="alert">{error} {error.includes("Connect X") && <button onClick={() => void signIn("twitter", { redirectTo: window.location.pathname })}>Connect X</button>}</div>}
+    {error && <div className="gate-error" role="alert">{error} {error.includes("Connect X") && <button onClick={() => void startXSignIn(window.location.pathname)}>Connect X</button>}</div>}
     <div className="raid-layout"><section><h2>Open tasks</h2>{board?.tasks.map(task => <article className="raid-task" key={task.id}><div><strong>{task.label}</strong><span>{task.points} points</span></div><a href={task.url} target="_blank" rel="noopener noreferrer">Open task <ArrowUpRight /></a><div className="raid-proof"><input placeholder="Paste your public proof link" value={proofs[task.id] || ""} onChange={event => setProofs(current => ({ ...current, [task.id]: event.target.value }))} /><button disabled={busy === task.id || !proofs[task.id]} onClick={() => void send("submit", { taskId: task.id, proof: proofs[task.id] })}>Submit proof</button></div></article>)}</section>
     <section><h2><Trophy /> Leaderboard</h2>{board?.leaderboard.length ? board.leaderboard.map((entry, index) => <div className="raid-rank" key={index}><span>#{index + 1}</span><strong>{entry.username}</strong><b>{entry.points} pts</b></div>) : <p>No approved scores yet.</p>}</section></div>
     {board?.isOwner && <section className="raid-review"><h2>Review submissions</h2>{board.pending.length ? board.pending.map(item => <article key={item.id}><div><strong>{item.username}</strong><a href={item.proof} target="_blank" rel="noopener noreferrer">View proof <ArrowUpRight /></a></div><span>{item.points} points requested</span><button onClick={() => void send("review", { submissionId: item.id, status: "approved" })}><Check /> Approve</button><button onClick={() => void send("review", { submissionId: item.id, status: "rejected" })}><X /> Reject</button></article>) : <p>Nothing to review.</p>}</section>}
