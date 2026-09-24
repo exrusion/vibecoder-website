@@ -171,6 +171,27 @@ export default function ${project.name.replace(/\s/g, "")}() {
 }`;
 }
 
+function legacySiteSource(project: Project) {
+  // Older projects were rendered from a fixed React template. Give the model the
+  // actual visible markup and its styles so its first edit preserves that site.
+  const site = document.querySelector<HTMLElement>(".site-frame .mini-site");
+  if (!site) return projectCode(project);
+  const styles: string[] = [];
+  const siteSelector = /\.(?:mini-|token-|orbit|spark|dex-|contract-pill)/;
+  for (const sheet of Array.from(document.styleSheets)) {
+    try {
+      for (const rule of Array.from(sheet.cssRules)) {
+        if (siteSelector.test(rule.cssText)) styles.push(rule.cssText);
+      }
+    } catch {
+      // Cross-origin stylesheets are not readable; the site styles are local.
+    }
+  }
+  const snapshot = site.cloneNode(true) as HTMLElement;
+  snapshot.querySelectorAll("script").forEach(script => script.remove());
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>:root{--display:Georgia,serif;--sans:Arial,sans-serif;--font-mono:monospace}*{box-sizing:border-box}body{margin:0}${styles.join("\n")}</style></head><body>${snapshot.outerHTML}</body></html>`;
+}
+
 function previewDocument(html: string) {
   // Generated code runs in an opaque-origin sandbox; this policy also blocks network calls and external scripts.
   const policy = "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src https: data: blob:; script-src 'unsafe-inline'; frame-src https://dexscreener.com; media-src https: data:; connect-src 'none'; form-action 'none'; base-uri 'none'";
@@ -364,7 +385,7 @@ export default function Home() {
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (apiKey.trim()) headers["x-openrouter-key"] = apiKey.trim();
-      const response = await fetch("/api/site-code", { method: "POST", headers, body: JSON.stringify({ mode: "edit", prompt: request, project: { ...current, sourceHtml: undefined }, html: current.sourceHtml || projectCode(current), history: messages }) });
+      const response = await fetch("/api/site-code", { method: "POST", headers, body: JSON.stringify({ mode: "edit", prompt: request, project: { ...current, sourceHtml: undefined }, html: current.sourceHtml || legacySiteSource(current), history: messages }) });
       const payload = await response.json() as { html?: string; reply?: string; changed?: boolean; error?: string; creditsRemaining?: string };
       if (!response.ok) throw new Error(payload.error || "The AI edit failed. Please try again.");
       if (!payload.html) throw new Error("The AI returned no website code.");
