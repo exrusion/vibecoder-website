@@ -81,6 +81,11 @@ function slugify(value: string) {
   return value.toLowerCase().replace(/\$|[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-").replace(/-+/g, "-").slice(0, 30);
 }
 
+function slugFromSiteUrl(value: string) {
+  const url = new URL(value);
+  return url.hostname === "vibekit.io" ? url.pathname.split("/").pop() || "" : url.hostname.split(".")[0];
+}
+
 function compactUsd(value?: number) {
   if (!value) return "—";
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 }).format(value);
@@ -371,7 +376,7 @@ export default function Home() {
       if (generated.creditsRemaining) setCreditStatus(status => status?.user ? { ...status, user: { ...status.user, balance: generated.creditsRemaining || status.user.balance } } : status);
       setCurrent(next); setCode(generated.html);
       setMessages([{ role: "user", text: request }, { role: "assistant", text: `I built a custom site for ${next.name}. You can ask me to change any part of its design or code.` }]);
-      setProjects(items => [next, ...items]); setPublishedUrl(next.published || ""); setPublishSlug(next.published ? new URL(next.published).hostname.split(".")[0] : slugify(next.name)); setVersion(1); setWorkspaceOpen(true); window.scrollTo({ top: 0, behavior: "smooth" });
+      setProjects(items => [next, ...items]); setPublishedUrl(next.published || ""); setPublishSlug(next.published ? slugFromSiteUrl(next.published) : slugify(next.name)); setVersion(1); setWorkspaceOpen(true); window.scrollTo({ top: 0, behavior: "smooth" });
       if (!next.published) toast.info("Site created. Connect X, then publish to claim your subdomain.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "The AI could not build this site.");
@@ -399,7 +404,7 @@ export default function Home() {
         const next: Project = { ...current, sourceHtml: payload.html, updated: "Just now" };
         setCurrent(next); setCode(payload.html); setProjects(items => items.map(item => item.id === next.id ? next : item)); setVersion(value => value + 1);
         if (next.published) {
-          const liveSlug = new URL(next.published).hostname === "vibekit.io" ? next.published.split("/").pop() : new URL(next.published).hostname.split(".")[0];
+          const liveSlug = slugFromSiteUrl(next.published);
           const updateResponse = await fetch("/api/publish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug: liveSlug, name: next.name, html: payload.html }) });
           if (!updateResponse.ok) toast.error("Your edit is saved here, but the live site did not update. Try Publish again.");
         }
@@ -416,7 +421,7 @@ export default function Home() {
     const next = project.sourceHtml ? { ...project, sourceHtml: ensureTokenImage(project.sourceHtml, project.imageUrl, project.name, project.contractAddress) } : project;
     setCurrent(next); setCode(next.sourceHtml || projectCode(next));
     if (next.sourceHtml !== project.sourceHtml) setProjects(items => items.map(item => item.id === next.id ? next : item));
-    setMessages([{ role: "assistant", text: `${next.name} is ready. Tell me what you want to change.` }]); setPublishSlug(next.published ? new URL(next.published).hostname.split(".")[0] : slugify(next.name)); setPublishedUrl(next.published || ""); setWorkspaceOpen(true); setMainView("create"); window.scrollTo({ top: 0, behavior: "smooth" });
+    setMessages([{ role: "assistant", text: `${next.name} is ready. Tell me what you want to change.` }]); setPublishSlug(next.published ? slugFromSiteUrl(next.published) : slugify(next.name)); setPublishedUrl(next.published || ""); setWorkspaceOpen(true); setMainView("create"); window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const updateToolProject = (patch: Partial<ToolProject>) => {
     const next = { ...current, ...patch, updated: "Just now" };

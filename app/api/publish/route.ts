@@ -10,7 +10,8 @@ export async function POST(request: Request) {
   let body: { slug?: string; html?: string; name?: string; preview?: boolean; auto?: boolean };
   try { body = await request.json(); } catch { return Response.json({ error: "Invalid request." }, { status: 400 }); }
   const preview = body.preview === true;
-  const slug = preview ? `preview-${randomUUID()}` : String(body.slug || "");
+  const requested = String(body.slug || "");
+  const slug = preview ? `preview-${randomUUID()}` : body.auto && !validSlug(requested) && /^[a-z0-9-]{1,26}$/.test(requested) ? `site-${requested}` : requested;
   if (!preview && !validSlug(slug)) return Response.json({ error: "Choose a valid site name." }, { status: 400 });
   const html = String(body.html || "");
   if (!/^\s*<!doctype html|^\s*<html/i.test(html) || html.length > 250_000) return Response.json({ error: "A generated HTML site is required (maximum 250 KB)." }, { status: 400 });
