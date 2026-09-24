@@ -33,9 +33,10 @@ function findTokenAddress(...values: unknown[]) {
 
 async function resolveToken(address: string): Promise<TokenMetadata | null> {
   if (!SOLANA_ADDRESS.test(address)) return null;
-  const [pumpResult, dexResult] = await Promise.allSettled([
+  const [pumpResult, dexResult, jupiterResult] = await Promise.allSettled([
     fetch(`https://frontend-api-v3.pump.fun/coins/${encodeURIComponent(address)}`, { next: { revalidate: 60 } }),
     fetch(`https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(address)}`, { next: { revalidate: 60 } }),
+    fetch(`https://lite-api.jup.ag/tokens/v2/search?query=${encodeURIComponent(address)}`, { next: { revalidate: 60 } }),
   ]);
 
   const pump = pumpResult.status === "fulfilled" && pumpResult.value.ok
@@ -44,12 +45,16 @@ async function resolveToken(address: string): Promise<TokenMetadata | null> {
   const dexPayload = dexResult.status === "fulfilled" && dexResult.value.ok
     ? await dexResult.value.json() as { pairs?: Array<Record<string, unknown>> }
     : {};
+  const jupiterPayload = jupiterResult.status === "fulfilled" && jupiterResult.value.ok
+    ? await jupiterResult.value.json() as Array<Record<string, unknown>>
+    : [];
+  const jupiter = jupiterPayload.find((token) => token.id === address) ?? {};
   const pairs = (dexPayload.pairs ?? []).filter((pair) => pair.chainId === "solana");
   const pair = pairs.sort((a, b) => Number((b.liquidity as { usd?: number } | undefined)?.usd ?? 0) - Number((a.liquidity as { usd?: number } | undefined)?.usd ?? 0))[0];
   const baseToken = pair?.baseToken as { name?: string; symbol?: string } | undefined;
   const info = pair?.info as { imageUrl?: string; websites?: Array<{ url?: string }>; socials?: Array<{ platform?: string; handle?: string }> } | undefined;
-  const name = String(pump.name || baseToken?.name || "").trim();
-  const symbol = String(pump.symbol || baseToken?.symbol || "").trim();
+  const name = String(pump.name || jupiter.name || baseToken?.name || "").trim();
+  const symbol = String(pump.symbol || jupiter.symbol || baseToken?.symbol || "").trim();
   if (!name && !symbol) return null;
   const twitterSocial = info?.socials?.find((item) => item.platform === "twitter")?.handle;
 
@@ -57,13 +62,13 @@ async function resolveToken(address: string): Promise<TokenMetadata | null> {
     name: name || symbol,
     ticker: symbol ? `$${symbol.replace(/^\$/, "")}` : `$${name.slice(0, 8).toUpperCase()}`,
     contractAddress: address,
-    imageUrl: String(pump.image_uri || info?.imageUrl || "") || undefined,
+    imageUrl: String(pump.image_uri || jupiter.icon || info?.imageUrl || "") || undefined,
     description: String(pump.description || "") || undefined,
     website: String(pump.website || info?.websites?.[0]?.url || "") || undefined,
     twitter: String(pump.twitter || (twitterSocial ? `https://x.com/${twitterSocial.replace(/^@/, "")}` : "")) || undefined,
-    marketCap: Number(pair?.marketCap ?? pump.usd_market_cap ?? 0) || undefined,
-    liquidity: Number((pair?.liquidity as { usd?: number } | undefined)?.usd ?? 0) || undefined,
-    priceUsd: String(pair?.priceUsd || "") || undefined,
+    marketCap: Number(pair?.marketCap ?? pump.usd_market_cap ?? jupiter.mcap ?? 0) || undefined,
+    liquidity: Number((pair?.liquidity as { usd?: number } | undefined)?.usd ?? jupiter.liquidity ?? 0) || undefined,
+    priceUsd: String(pair?.priceUsd || jupiter.usdPrice || "") || undefined,
     volume24h: Number((pair?.volume as { h24?: number } | undefined)?.h24 ?? 0) || undefined,
   };
 }
