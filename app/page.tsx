@@ -239,6 +239,7 @@ export default function Home() {
   const [screenshotName, setScreenshotName] = useState("");
   const [screenshotUrl, setScreenshotUrl] = useState("");
   const [isBuilding, setIsBuilding] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [previewMode, setPreviewMode] = useState<PreviewMode>("preview");
   const [device, setDevice] = useState<DeviceMode>("desktop");
@@ -351,13 +352,26 @@ export default function Home() {
     const reader = new FileReader(); reader.onload = () => setScreenshotUrl(String(reader.result || "")); reader.readAsDataURL(file);
   };
 
-  const applyEdit = () => {
-    if (!editPrompt.trim()) return;
-    const request = editPrompt.trim(); const lower = request.toLowerCase(); const next = { ...current, updated: "Just now" };
-    if (lower.includes("dark")) next.theme = "dark"; if (lower.includes("light")) next.theme = "light";
-    if (lower.includes("purple")) next.accent = "#b9a7ff"; if (lower.includes("green")) next.accent = "#98d66f"; if (lower.includes("blue")) next.accent = "#78b4ff"; if (lower.includes("orange")) next.accent = "#ffad5c"; if (lower.includes("red")) next.accent = "#ff6b5d";
-    setMessages(items => [...items, { role: "user", text: request }, { role: "assistant", text: "Done. I updated the design and saved a new version." }]);
-    setCurrent(next); setCode(projectCode(next)); setProjects(items => items.map(item => item.id === next.id ? next : item)); setVersion(value => value + 1); setEditPrompt(""); toast.success("Design updated");
+  const applyEdit = async () => {
+    if (!editPrompt.trim() || isEditing) return;
+    const request = editPrompt.trim();
+    setIsEditing(true);
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (apiKey.trim()) headers["x-openrouter-key"] = apiKey.trim();
+      const response = await fetch("/api/tools/ai", { method: "POST", headers, body: JSON.stringify({ kind: "edit", prompt: request, context: JSON.stringify(current) }) });
+      const payload = await response.json() as { result?: { changes?: Partial<Project>; summary?: string }; error?: string; creditsRemaining?: string };
+      if (!response.ok) throw new Error(payload.error || "The AI edit failed. Please try again.");
+      const changes = payload.result?.changes || {};
+      if (!Object.keys(changes).length) throw new Error(payload.result?.summary || "That change isn't supported by this editor yet.");
+      const next: Project = { ...current, ...changes, id: current.id, updated: "Just now" };
+      setMessages(items => [...items, { role: "user", text: request }, { role: "assistant", text: payload.result?.summary || "I updated the requested fields." }]);
+      setCurrent(next); setCode(projectCode(next)); setProjects(items => items.map(item => item.id === next.id ? next : item)); setVersion(value => value + 1); setEditPrompt("");
+      if (payload.creditsRemaining) setCreditStatus(status => status?.user ? { ...status, user: { ...status.user, balance: payload.creditsRemaining || status.user.balance } } : status);
+      toast.success("Website updated");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The AI edit failed. Please try again.");
+    } finally { setIsEditing(false); }
   };
 
   const openProject = (project: Project) => {
@@ -477,7 +491,7 @@ export default function Home() {
             <div className="chat-heading"><div><WandSparkles /><span>Vibekit AI</span></div><button aria-label="More options"><MoreHorizontal /></button></div>
             <div className="chat-messages"><div className="build-summary"><span>VERSION {version}</span><strong>{current.name}</strong><p>{current.prompt}</p></div>{messages.map((message,index) => <div key={`${message.role}-${index}`} className={`message message-${message.role}`}>{message.role === "assistant" && <BrandMark small />}<p>{message.text}</p></div>)}</div>
             <div className="quick-edits"><button onClick={() => setEditPrompt("Make it dark and more cinematic")}><Palette /> Darker</button><button onClick={() => setEditPrompt("Make the accent green")}><Sparkles /> New color</button><button onClick={() => setEditPrompt("Add a community game section")}><Gamepad2 /> Add game</button></div>
-            <div className="edit-composer"><Textarea value={editPrompt} onChange={e => setEditPrompt(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); applyEdit(); } }} placeholder="Ask for any change..." aria-label="Ask for a website edit" /><button onClick={applyEdit} aria-label="Apply edit" disabled={!editPrompt.trim()}><ArrowUp /></button></div>
+            <div className="edit-composer"><Textarea value={editPrompt} onChange={e => setEditPrompt(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void applyEdit(); } }} placeholder={isEditing ? "Vibekit is editing your site..." : "Ask for any change..."} aria-label="Ask for a website edit" /><button onClick={() => void applyEdit()} aria-label="Apply edit" disabled={!editPrompt.trim() || isEditing}>{isEditing ? <LoaderCircle className="spin" /> : <ArrowUp />}</button></div>
           </aside>
           <section className="canvas-panel">
             <div className="canvas-top"><div className="browser-dots"><i /><i /><i /></div><div className="preview-url"><Globe2 /><span>{publishedUrl || `${slugify(current.name)}.preview.vibekit.io`}</span><button onClick={() => copy(publishedUrl || `${slugify(current.name)}.preview.vibekit.io`)} aria-label="Copy preview URL"><Copy /></button></div><div className="device-switch"><button className={device === "desktop" ? "active" : ""} onClick={() => setDevice("desktop")} aria-label="Desktop preview"><Monitor /></button><button className={device === "mobile" ? "active" : ""} onClick={() => setDevice("mobile")} aria-label="Mobile preview"><Smartphone /></button></div></div>
