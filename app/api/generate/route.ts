@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { auth } from "@/auth";
+import { GENERATION_RESERVE, refundGenerationCredits, reserveGenerationCredits, settleGenerationCredits } from "@/lib/credits";
 
 type SiteSpec = {
   name: string;
@@ -127,10 +129,31 @@ function localSpec(prompt: string): SiteSpec {
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({})) as { prompt?: unknown; tokenAddress?: unknown; importValue?: unknown };
   if (typeof body.prompt !== "string" || body.prompt.trim().length < 3) return NextResponse.json({ error: "A website prompt is required." }, { status: 400 });
+  const personalKey = request.headers.get("x-openrouter-key")?.trim();
+  let creditOwner = "";
+  let reserved = BigInt(0);
+  let reservationSettled = false;
+  if (!personalKey) {
+    const session = await auth();
+    creditOwner = session?.user?.xUserId || "";
+    if (!creditOwner) return NextResponse.json({ error: "Connect X to unlock your 10M free AI tokens.", code: "AUTH_REQUIRED" }, { status: 401 });
+    const reservation = await reserveGenerationCredits(creditOwner, GENERATION_RESERVE);
+    if (!reservation) return NextResponse.json({ error: "You need more AI tokens. Eligible holders receive 30M every day.", code: "INSUFFICIENT_CREDITS" }, { status: 402 });
+    reserved = reservation.reserved;
+  }
+  const refund = async () => {
+    if (creditOwner && reserved && !reservationSettled) {
+      await refundGenerationCredits(creditOwner, reserved);
+      reservationSettled = true;
+    }
+  };
   const tokenMetadata = await resolveToken(findTokenAddress(body.tokenAddress, body.importValue, body.prompt));
   const fallback: SiteSpec = { ...localSpec(body.prompt), ...tokenMetadata };
-  const key = request.headers.get("x-openrouter-key")?.trim() || process.env.AI_API_KEY?.trim() || process.env.OPENROUTER_API_KEY?.trim();
-  if (!key) return NextResponse.json({ site: fallback, engine: "local" });
+  const key = personalKey || process.env.AI_API_KEY?.trim() || process.env.OPENROUTER_API_KEY?.trim();
+  if (!key) {
+    await refund();
+    return NextResponse.json({ site: fallback, engine: "local" });
+  }
 
   const baseUrl = (process.env.AI_BASE_URL?.trim() || "https://openrouter.ai/api/v1").replace(/\/$/, "");
 
@@ -141,20 +164,35 @@ export async function POST(request: Request) {
       headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json", "X-Title": "VibeCoder" },
       body: JSON.stringify({
         model,
+        max_tokens: 900,
         messages: [
           { role: "system", content: "You are the design director for VibeCoder, a Solana community site builder. Return only valid JSON with these keys: name, ticker, headline, subline, accent, theme. Keep the headline under 8 words, the subline under 20 words, accent as a six-digit hex color, and theme as light or dark. When verified token metadata is supplied, copy its name and ticker exactly." },
           { role: "user", content: `Website request: ${body.prompt}\nToken address: ${typeof body.tokenAddress === "string" ? body.tokenAddress : "none"}\nImported project: ${typeof body.importValue === "string" ? body.importValue : "none"}\nVerified token metadata: ${tokenMetadata ? JSON.stringify(tokenMetadata) : "none"}` },
         ],
       }),
     });
-    if (!response.ok) return NextResponse.json({ site: fallback, engine: "local", providerError: true });
-    const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+    if (!response.ok) {
+      await refund();
+      return NextResponse.json({ site: fallback, engine: "local", providerError: true });
+    }
+    const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { total_tokens?: number } };
     const content = payload.choices?.[0]?.message?.content;
-    if (!content) return NextResponse.json({ site: fallback, engine: "local" });
+    if (!content) {
+      await refund();
+      return NextResponse.json({ site: fallback, engine: "local" });
+    }
     const generated = JSON.parse(content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")) as SiteSpec;
     const site = { ...generated, ...tokenMetadata };
-    return NextResponse.json({ site, engine: "relay" });
+    let creditsRemaining: string | undefined;
+    if (creditOwner && reserved) {
+      const estimated = Math.max(1, Math.ceil((body.prompt.length + content.length) / 4));
+      const actual = BigInt(Math.max(1, Math.floor(payload.usage?.total_tokens || estimated)));
+      creditsRemaining = (await settleGenerationCredits(creditOwner, reserved, actual)).toString();
+      reservationSettled = true;
+    }
+    return NextResponse.json({ site, engine: "relay", creditsRemaining });
   } catch {
+    await refund();
     return NextResponse.json({ site: fallback, engine: "local", providerError: true });
   }
 }

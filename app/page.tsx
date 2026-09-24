@@ -3,12 +3,13 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft, ArrowRight, ArrowUp, BarChart3, Check, ChevronRight, Code2,
-  Copy, Download, ExternalLink, Folder, Gamepad2, GitBranch, Globe2, History,
+  Coins, Copy, Download, ExternalLink, Folder, Gamepad2, Gift, GitBranch, Globe2, History,
   Image as ImageIcon, LayoutGrid, Link2, LoaderCircle, Menu, Monitor,
-  MoreHorizontal, Palette, Plus, Rocket, Search, Settings, Smartphone,
+  LogOut, MoreHorizontal, Palette, Plus, Rocket, Search, Settings, ShieldCheck, Smartphone,
   Sparkles, Undo2, Upload, Wallet, WandSparkles, X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { signIn, signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,18 @@ type PreviewMode = "preview" | "code";
 type DeviceMode = "desktop" | "mobile";
 type Project = { id: string; name: string; prompt: string; ticker: string; accent: string; theme: "light" | "dark"; updated: string; published?: string; headline?: string; subline?: string; contractAddress?: string; imageUrl?: string; description?: string; website?: string; twitter?: string; marketCap?: number; liquidity?: number; priceUsd?: string; volume24h?: number; pairAddress?: string; dexScreenerUrl?: string };
 type ChatMessage = { role: "user" | "assistant"; text: string };
+type CreditStatus = {
+  authenticated: boolean;
+  configured: boolean;
+  user?: { username: string; displayName: string; avatarUrl: string; walletAddress: string | null; balance: string; lifetimeSpent: string; lastHolderClaim: string | null };
+  grants?: { welcome: string; dailyHolder: string; holderThreshold: string };
+  holder?: { configured: boolean; eligible: boolean; holding: string; threshold: string; granted: boolean; claimedToday: boolean };
+};
+type PhantomProvider = {
+  isPhantom?: boolean;
+  connect: () => Promise<{ publicKey: { toString: () => string } }>;
+  signMessage: (message: Uint8Array, encoding: "utf8") => Promise<{ signature: Uint8Array }>;
+};
 type ModelContextApi = {
   registerTool: (tool: {
     name: string;
@@ -65,6 +78,12 @@ function slugify(value: string) {
 function compactUsd(value?: number) {
   if (!value) return "—";
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 }).format(value);
+}
+
+function compactCredits(value?: string) {
+  const amount = Number(value || 0);
+  if (!Number.isFinite(amount)) return "0";
+  return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(amount);
 }
 
 function formatPrice(value?: string) {
@@ -216,6 +235,9 @@ export default function Home() {
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [creditsOpen, setCreditsOpen] = useState(false);
+  const [creditStatus, setCreditStatus] = useState<CreditStatus | null>(null);
+  const [walletBusy, setWalletBusy] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [publishSlug, setPublishSlug] = useState("mochi");
   const [publishing, setPublishing] = useState(false);
@@ -238,6 +260,22 @@ export default function Home() {
     }
   }, []);
   useEffect(() => { window.localStorage.setItem("vibecoder-projects", JSON.stringify(projects)); }, [projects]);
+
+  const refreshCredits = async () => {
+    try {
+      const response = await fetch("/api/credits", { cache: "no-store" });
+      if (response.ok) setCreditStatus(await response.json() as CreditStatus);
+    } catch { /* The builder remains usable with a personal key when account services are unavailable. */ }
+  };
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/credits", { cache: "no-store" })
+      .then(response => response.ok ? response.json() as Promise<CreditStatus> : null)
+      .then(status => { if (active && status) setCreditStatus(status); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
   const effectivePrompt = useMemo(() => {
     if (source === "import") return `Create a polished Solana project site from ${importValue || "this project"}`;
@@ -264,11 +302,19 @@ export default function Home() {
         fetch("/api/generate", { method: "POST", headers, body: JSON.stringify({ prompt: request, tokenAddress, importValue }) }),
         new Promise(resolve => window.setTimeout(resolve, 850)),
       ]);
+      const data = await response.json().catch(() => ({})) as { site?: Partial<Project>; error?: string; code?: string; creditsRemaining?: string };
+      if (!response.ok) {
+        if (response.status === 401 || data.code === "AUTH_REQUIRED") setCreditsOpen(true);
+        if (response.status === 402 || data.code === "INSUFFICIENT_CREDITS") setCreditsOpen(true);
+        toast.error(data.error || "The site could not be generated.");
+        setIsBuilding(false);
+        return;
+      }
       if (response.ok) {
-        const data = await response.json() as { site?: Partial<Project> };
         if (data.site) {
           inferred = { ...inferred, ...data.site };
         }
+        if (data.creditsRemaining) setCreditStatus(status => status?.user ? { ...status, user: { ...status.user, balance: data.creditsRemaining || status.user.balance } } : status);
       }
     } catch { /* The local design engine remains available when an AI provider is not configured. */ }
     const next: Project = { ...inferred, id: `${slugify(inferred.name || "project")}-${Date.now()}`, name: inferred.name || "Untitled project", prompt: request, ticker: inferred.ticker || "$TOKEN", accent: inferred.accent || "#7c5cff", theme: inferred.theme || "dark", updated: "Just now" };
@@ -303,6 +349,32 @@ export default function Home() {
   };
   const copy = async (value: string) => { await navigator.clipboard?.writeText(value); toast.success("Copied"); };
   const downloadCode = () => { const blob = new Blob([code], { type: "text/plain" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `${slugify(current.name)}-site.tsx`; link.click(); URL.revokeObjectURL(link.href); toast.success("Code exported"); };
+  const connectX = () => {
+    if (creditStatus?.configured === false) { setCreditsOpen(true); toast.info("X login is waiting for its two Railway credentials."); return; }
+    void signIn("twitter", { redirectTo: "/" });
+  };
+  const connectHolderWallet = async () => {
+    const provider = (window as Window & { solana?: PhantomProvider }).solana;
+    if (!provider?.isPhantom) { toast.error("Install Phantom to verify your holder wallet."); return; }
+    setWalletBusy(true);
+    try {
+      const connection = await provider.connect();
+      const wallet = connection.publicKey.toString();
+      const challengeResponse = await fetch("/api/wallet/challenge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wallet }) });
+      const challenge = await challengeResponse.json() as { message?: string; error?: string };
+      if (!challengeResponse.ok || !challenge.message) throw new Error(challenge.error || "Could not create the wallet request.");
+      const signed = await provider.signMessage(new TextEncoder().encode(challenge.message), "utf8");
+      const verifyResponse = await fetch("/api/wallet/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wallet, signature: Array.from(signed.signature) }) });
+      const verified = await verifyResponse.json() as { error?: string; holder?: { eligible?: boolean; granted?: boolean } };
+      if (!verifyResponse.ok) throw new Error(verified.error || "Wallet verification failed.");
+      await refreshCredits();
+      toast.success(verified.holder?.granted ? "Wallet verified — 30M holder tokens added." : verified.holder?.eligible ? "Wallet verified. Today’s holder drop is already claimed." : "Wallet verified.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Wallet verification failed.");
+    } finally {
+      setWalletBusy(false);
+    }
+  };
 
   useEffect(() => {
     const context = (document as Document & { modelContext?: ModelContextApi }).modelContext;
@@ -354,7 +426,7 @@ export default function Home() {
       <header className="top-bar">
         <button className="mobile-menu" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation"><Menu /></button>
         <p>{workspaceOpen ? current.name : mainView === "gallery" ? "Made with VibeCoder" : mainView === "projects" ? "Your workspace" : "AI SITE BUILDER FOR SOLANA"}</p>
-        <div className="top-actions"><button className="search-button" aria-label="Search"><Search /></button><div className="network-state"><i /> Mainnet</div><Button className="wallet-button"><Wallet /> Connect wallet</Button></div>
+        <div className="top-actions"><button className="search-button" aria-label="Search"><Search /></button><div className="network-state"><i /> Mainnet</div>{creditStatus?.authenticated ? <Button className="wallet-button credit-balance-button" onClick={() => setCreditsOpen(true)}><Coins /> {compactCredits(creditStatus.user?.balance)} tokens</Button> : <Button className="wallet-button" onClick={connectX}><span className="x-mark">𝕏</span> Connect X</Button>}</div>
       </header>
 
       {workspaceOpen ? <section className="workspace">
@@ -377,6 +449,7 @@ export default function Home() {
         </div>
       </section> : mainView === "create" ? <section className="create-view">
         <div className="create-heading"><span><Sparkles /> SOLANA, MEET YOUR SITE</span><h1>Build something<br /><em>worth joining.</em></h1><p>Describe it, import it, or show us the look. VibeCoder turns your idea into a real site for your token community.</p></div>
+        <button className="credit-banner" onClick={() => creditStatus?.authenticated ? setCreditsOpen(true) : connectX()}><span><Gift /></span><div><strong>10M AI tokens, free with X</strong><small>Connect once and start building immediately.</small></div><b>Holders get 30M daily <ArrowRight /></b></button>
         <div className="builder-card"><Tabs value={source} onValueChange={value => setSource(value as BuilderSource)}>
           <TabsList className="source-tabs" variant="line"><TabsTrigger value="prompt"><Sparkles /> Start with a prompt</TabsTrigger><TabsTrigger value="import"><Link2 /> Import a project</TabsTrigger><TabsTrigger value="screenshot"><ImageIcon /> Screenshot to site</TabsTrigger></TabsList>
           <TabsContent value="prompt" className="source-content"><Textarea value={prompt} onChange={e => setPrompt(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); startBuild(); } }} placeholder="Make a playful website for a frog token with a live chart, a roadmap and a weekly community game..." aria-label="Describe the website to build" /></TabsContent>
@@ -400,6 +473,13 @@ export default function Home() {
     </section>
 
     <Dialog open={publishOpen} onOpenChange={setPublishOpen}><DialogContent className="publish-dialog"><DialogHeader><span className="dialog-icon"><Rocket /></span><DialogTitle>Give your site a home.</DialogTitle><DialogDescription>Publish this version now. You can keep editing after it goes live.</DialogDescription></DialogHeader>{publishedUrl ? <div className="published-card"><span><i /> LIVE</span><strong>{publishedUrl}</strong><div><Button variant="outline" onClick={() => copy(publishedUrl)}><Copy /> Copy link</Button><Button onClick={() => toast.info("Opening your live site in a new tab")}>Visit site <ExternalLink /></Button></div></div> : <><label className="subdomain-label">Choose your free subdomain</label><div className="subdomain-field"><Input value={publishSlug} onChange={e => setPublishSlug(slugify(e.target.value))} aria-label="Subdomain" /><span>.vibecoder.website</span></div><div className="publish-checks"><span><Check /> SSL included</span><span><Check /> Instant updates</span><span><Check /> Custom domain ready</span></div><DialogFooter><Button className="publish-confirm" onClick={publish} disabled={publishing || !publishSlug}>{publishing ? <><LoaderCircle className="spin" /> Publishing</> : <>Publish site <ArrowRight /></>}</Button></DialogFooter></>}</DialogContent></Dialog>
+
+    <Dialog open={creditsOpen} onOpenChange={setCreditsOpen}><DialogContent className="credits-dialog"><DialogHeader><span className="credits-icon"><Coins /></span><DialogTitle>AI token balance</DialogTitle><DialogDescription>Build with VibeCoder credits. Your X grant is permanent and holder rewards refresh every UTC day.</DialogDescription></DialogHeader>{creditStatus?.authenticated ? <div className="credits-account">
+      <div className="credits-profile"><span>{(creditStatus.user?.displayName || creditStatus.user?.username || "X").charAt(0)}</span><div><strong>{creditStatus.user?.displayName || `@${creditStatus.user?.username}`}</strong><small>{creditStatus.user?.username ? `@${creditStatus.user.username}` : "Connected with X"}</small></div><b>{compactCredits(creditStatus.user?.balance)}<small>tokens left</small></b></div>
+      <div className="credit-grant-grid"><article><Gift /><span>WELCOME GRANT</span><strong>10M</strong><small>One time with X</small></article><article><ShieldCheck /><span>HOLDER DROP</span><strong>30M</strong><small>Every UTC day</small></article><article><Coins /><span>HOLDING NEEDED</span><strong>10M</strong><small>1% of 1B supply</small></article></div>
+      <div className={`holder-card ${creditStatus.holder?.eligible ? "holder-card-eligible" : ""}`}><div><span>{creditStatus.holder?.eligible ? <Check /> : <Wallet />}</span><p><strong>{creditStatus.user?.walletAddress ? shortAddress(creditStatus.user.walletAddress) : "Verify a holder wallet"}</strong><small>{!creditStatus.holder?.configured ? "Reward mint needs to be added in Railway" : creditStatus.holder?.eligible ? `${compactCredits(creditStatus.holder.holding)} held · daily reward active` : creditStatus.user?.walletAddress ? `${compactCredits(creditStatus.holder?.holding)} held · 10M required` : "Sign once with Phantom. No transaction or gas."}</small></p></div><Button variant={creditStatus.user?.walletAddress ? "outline" : "default"} onClick={connectHolderWallet} disabled={walletBusy}>{walletBusy ? <LoaderCircle className="spin" /> : <Wallet />} {creditStatus.user?.walletAddress ? "Change wallet" : "Connect Phantom"}</Button></div>
+      <div className="credits-foot"><span>Spent {compactCredits(creditStatus.user?.lifetimeSpent)} tokens</span><button onClick={() => void signOut({ redirectTo: "/" })}><LogOut /> Disconnect X</button></div>
+    </div> : <div className="connect-x-card"><span className="connect-x-logo">𝕏</span><h3>Get 10M AI tokens</h3><p>Connect your X account once. No card and no payment required.</p><Button onClick={connectX} disabled={creditStatus?.configured === false}>Connect with X <ArrowRight /></Button>{creditStatus?.configured === false && <small>X credentials still need to be added in Railway.</small>}</div>}</DialogContent></Dialog>
 
     <Sheet open={versionsOpen} onOpenChange={setVersionsOpen}><SheetContent className="history-sheet"><SheetHeader><SheetTitle>Version history</SheetTitle><SheetDescription>Every AI edit creates a version you can restore.</SheetDescription></SheetHeader><div className="version-list">{Array.from({ length: version },(_,index) => version-index).map((item,index) => <button key={item} className={index === 0 ? "current-version" : ""} onClick={() => { setVersion(item); setVersionsOpen(false); toast.success(`Restored version ${item}`); }}><span>v{item}</span><div><strong>{index === 0 ? "Current version" : `Design update ${item}`}</strong><small>{index === 0 ? "Just now" : `${index*8+4} min ago`}</small></div>{index === 0 ? <Check /> : <History />}</button>)}</div></SheetContent></Sheet>
 
