@@ -17,12 +17,14 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Toaster } from "@/components/ui/sonner";
+import ToolsWorkbench, { type ToolProject } from "@/components/tools-workbench";
+import Script from "next/script";
 
-type MainView = "create" | "projects" | "gallery";
+type MainView = "create" | "projects" | "gallery" | "tools";
 type BuilderSource = "prompt" | "import" | "screenshot";
 type PreviewMode = "preview" | "code";
 type DeviceMode = "desktop" | "mobile";
-type Project = { id: string; name: string; prompt: string; ticker: string; accent: string; theme: "light" | "dark"; updated: string; published?: string; headline?: string; subline?: string; contractAddress?: string; imageUrl?: string; description?: string; website?: string; twitter?: string; marketCap?: number; liquidity?: number; priceUsd?: string; volume24h?: number; pairAddress?: string; dexScreenerUrl?: string };
+type Project = ToolProject & { id: string; prompt: string; theme: "light" | "dark"; updated: string; published?: string; headline?: string; subline?: string; description?: string };
 type ChatMessage = { role: "user" | "assistant"; text: string };
 type CreditStatus = {
   authenticated: boolean;
@@ -167,6 +169,13 @@ export default function ${project.name.replace(/\s/g, "")}() {
 }`;
 }
 
+function SiteGame({ project }: { project: Project }) {
+  const [score, setScore] = useState(0);
+  const [target, setTarget] = useState(0);
+  const [found, setFound] = useState<number[]>([]);
+  return <section className="mini-feature mini-game-feature"><small>COMMUNITY ARCADE</small><h3>{project.game === "clicker" ? "Tap to the moon" : "Find the pairs"}</h3><p>{project.name} mini-game · {score} points</p>{project.game === "clicker" ? <button onClick={() => setScore(value => value + 1)}>{project.imageUrl ? <img src={project.imageUrl} alt="" /> : project.name.charAt(0)}</button> : <div className="mini-memory">{[0,1,0,1].map((value,index) => <button key={index} disabled={found.includes(index)} onClick={() => { if (target === value) { setFound(items => [...items,index]); setScore(points => points+10); setTarget(1-target); } }}>{found.includes(index) ? "✓" : "?"}</button>)}</div>}</section>;
+}
+
 function MiniSite({ project, mobile = false }: { project: Project; mobile?: boolean }) {
   return (
     <div className={`mini-site ${project.theme === "dark" ? "mini-site-dark" : ""} ${mobile ? "mini-site-mobile" : ""}`} style={{ "--site-accent": project.accent } as React.CSSProperties}>
@@ -200,6 +209,10 @@ function MiniSite({ project, mobile = false }: { project: Project; mobile?: bool
         <div><span>01 / THE PROJECT</span><h3>{project.name} is live on Solana.</h3></div>
         <p>{project.description || `${project.name} is a community-led token with a clear home for its story, market data, and community links.`}</p>
       </section>
+      {project.sections?.map(section => <section key={section.id} className="mini-feature"><small>{section.type.toUpperCase()}</small><h3>{section.title}</h3><p>{section.body}</p>{section.cta && <span>{section.cta} <ArrowRight /></span>}</section>)}
+      {project.game && <SiteGame project={project} />}
+      {(project.gateUrl || project.raidUrl) && <section className="mini-feature mini-feature-links"><small>COMMUNITY TOOLS</small><h3>There is more to join.</h3><div>{project.gateUrl && <a href={project.gateUrl} target="_blank" rel="noopener noreferrer">Holder room <ArrowRight /></a>}{project.raidUrl && <a href={project.raidUrl} target="_blank" rel="noopener noreferrer">Community raids <ArrowRight /></a>}</div></section>}
+      {project.socialFeed && <section className="mini-feature mini-social"><small>LIVE FROM X</small><h3>From the community.</h3><a className="twitter-timeline" data-height="430" href={`https://x.com/${project.socialFeed}`}>Posts from @{project.socialFeed}</a><Script src="https://platform.twitter.com/widgets.js" strategy="afterInteractive" onLoad={() => { const widget = (window as Window & { twttr?: { widgets?: { load?: () => void } } }).twttr; widget?.widgets?.load?.(); }} /></section>}
       <section className="mini-community">
         <div><span>CONTRACT</span><strong>{project.contractAddress || "Connect a token to show its contract"}</strong></div>
         <div className="mini-community-links">{project.website && <a href={project.website}>Website <ExternalLink /></a>}{project.twitter && <a href={project.twitter}>X / Twitter <ExternalLink /></a>}<a href="#market">Live chart <ArrowRight /></a></div>
@@ -342,6 +355,11 @@ export default function Home() {
   const openProject = (project: Project) => {
     setCurrent(project); setCode(projectCode(project)); setMessages([{ role: "assistant", text: `${project.name} is ready. Tell me what you want to change.` }]); setPublishSlug(slugify(project.name)); setPublishedUrl(project.published || ""); setWorkspaceOpen(true); setMainView("create"); window.scrollTo({ top: 0, behavior: "smooth" });
   };
+  const updateToolProject = (patch: Partial<ToolProject>) => {
+    const next = { ...current, ...patch, updated: "Just now" };
+    setCurrent(next); setProjects(items => items.map(item => item.id === next.id ? next : item));
+    setCode(projectCode(next)); setVersion(value => value + 1);
+  };
   const remix = (name: string, type: string) => { setMainView("create"); setWorkspaceOpen(false); setSource("prompt"); setPrompt(`Remix ${name} into a ${type.toLowerCase()} for my Solana token community`); window.scrollTo({ top: 0, behavior: "smooth" }); toast.success("Remix loaded into the builder"); };
   const publish = () => {
     if (!publishSlug.trim()) return; setPublishing(true);
@@ -417,6 +435,7 @@ export default function Home() {
         <button className={mainView === "create" ? "active" : ""} onClick={() => { setMainView("create"); setWorkspaceOpen(false); setMobileNavOpen(false); }}><Plus /><span>Create</span></button>
         <button className={mainView === "projects" ? "active" : ""} onClick={() => { setMainView("projects"); setWorkspaceOpen(false); setMobileNavOpen(false); }}><Folder /><span>Projects</span><b>{projects.length}</b></button>
         <button className={mainView === "gallery" ? "active" : ""} onClick={() => { setMainView("gallery"); setWorkspaceOpen(false); setMobileNavOpen(false); }}><LayoutGrid /><span>Gallery</span></button>
+        <button className={mainView === "tools" ? "active" : ""} onClick={() => { setMainView("tools"); setWorkspaceOpen(false); setMobileNavOpen(false); }}><WandSparkles /><span>Tools</span></button>
       </nav>
       <div className="rail-note"><p>BUILD ON SOLANA.<br />PUBLISH ANYWHERE.</p><span /><small>ONE PROMPT<br />TO A REAL SITE.</small></div>
       <div className="rail-bottom"><button onClick={() => setSettingsOpen(true)}><Settings /><span>Settings</span></button><div className="engine-state"><i /><span>Builder ready</span></div></div>
@@ -425,7 +444,7 @@ export default function Home() {
     <section className="main-frame">
       <header className="top-bar">
         <button className="mobile-menu" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation"><Menu /></button>
-        <p>{workspaceOpen ? current.name : mainView === "gallery" ? "Made with VibeCoder" : mainView === "projects" ? "Your workspace" : "AI SITE BUILDER FOR SOLANA"}</p>
+        <p>{workspaceOpen ? current.name : mainView === "gallery" ? "Made with VibeCoder" : mainView === "projects" ? "Your workspace" : mainView === "tools" ? "Creator tools" : "AI SITE BUILDER FOR SOLANA"}</p>
         <div className="top-actions"><button className="search-button" aria-label="Search"><Search /></button><div className="network-state"><i /> Mainnet</div>{creditStatus?.authenticated ? <Button className="wallet-button credit-balance-button" onClick={() => setCreditsOpen(true)}><Coins /> {compactCredits(creditStatus.user?.balance)} tokens</Button> : <Button className="wallet-button" onClick={connectX}><span className="x-mark">𝕏</span> Connect X</Button>}</div>
       </header>
 
@@ -433,7 +452,7 @@ export default function Home() {
         <header className="workspace-toolbar">
           <div className="workspace-title"><button onClick={() => setWorkspaceOpen(false)} aria-label="Back to builder"><ArrowLeft /></button><div><strong>{current.name}</strong><span><i /> Saved · v{version}</span></div></div>
           <div className="toolbar-center"><div className="mode-switch"><button className={previewMode === "preview" ? "active" : ""} onClick={() => setPreviewMode("preview")}><Monitor /> Preview</button><button className={previewMode === "code" ? "active" : ""} onClick={() => setPreviewMode("code")}><Code2 /> Code</button></div></div>
-          <div className="workspace-actions"><button className="icon-action" onClick={() => toast.info("The last change was kept in version history")} aria-label="Undo"><Undo2 /></button><button className="icon-action" onClick={() => setVersionsOpen(true)} aria-label="Version history"><History /></button><Button variant="outline" className="export-button" onClick={downloadCode}><Download /> Export</Button><Button className="publish-button" onClick={() => setPublishOpen(true)}><Rocket /> Publish</Button></div>
+          <div className="workspace-actions"><Button variant="outline" onClick={() => { setMainView("tools"); setWorkspaceOpen(false); }}><WandSparkles /> Tools</Button><button className="icon-action" onClick={() => toast.info("The last change was kept in version history")} aria-label="Undo"><Undo2 /></button><button className="icon-action" onClick={() => setVersionsOpen(true)} aria-label="Version history"><History /></button><Button variant="outline" className="export-button" onClick={downloadCode}><Download /> Export</Button><Button className="publish-button" onClick={() => setPublishOpen(true)}><Rocket /> Publish</Button></div>
         </header>
         <div className="workspace-body">
           <aside className="chat-panel">
@@ -462,7 +481,7 @@ export default function Home() {
         </Tabs></div>
         <div className="idea-grid">{starterIdeas.map(idea => <button key={idea.title} onClick={() => { setSource("prompt"); setPrompt(idea.text); }}><span><idea.icon /></span><div><strong>{idea.title}</strong><p>{idea.text}</p></div><ArrowRight /></button>)}</div>
         <div className="recent-strip"><div className="section-heading"><div><span>YOUR WORK</span><h2>Continue building</h2></div><button onClick={() => setMainView("projects")}>All projects <ArrowRight /></button></div><div className="recent-grid">{projects.slice(0,2).map(project => <button className="recent-project" key={project.id} onClick={() => openProject(project)}><div className="recent-visual" style={{ "--project-accent": project.accent } as React.CSSProperties}><span>{project.name.charAt(0)}</span><i /><i /></div><div><strong>{project.name}</strong><span>{project.updated}</span></div><ChevronRight /></button>)}</div></div>
-      </section> : mainView === "projects" ? <section className="library-view">
+      </section> : mainView === "tools" ? <ToolsWorkbench project={current} onChange={updateToolProject} apiKey={apiKey} onCreditBalance={balance => setCreditStatus(status => status?.user ? { ...status, user: { ...status.user, balance } } : status)} /> : mainView === "projects" ? <section className="library-view">
         <div className="library-heading"><span>YOUR WORKSPACE</span><h1>Every idea,<br /><em>still editable.</em></h1><Button onClick={() => { setMainView("create"); setWorkspaceOpen(false); }}><Plus /> New project</Button></div>
         <div className="project-table">{projects.map(project => <button key={project.id} className="project-row" onClick={() => openProject(project)}><div className="project-thumb" style={{ "--project-accent": project.accent } as React.CSSProperties}><span>{project.name.charAt(0)}</span></div><div className="project-info"><strong>{project.name}</strong><span>{project.prompt}</span></div><span className="project-status">{project.published ? <><i /> Live</> : "Draft"}</span><span className="project-updated">{project.updated}</span><ChevronRight /></button>)}</div>
       </section> : <section className="gallery-view">
