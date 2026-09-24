@@ -11,6 +11,7 @@ import {
 import { toast } from "sonner";
 import { signOut } from "next-auth/react";
 import { startXSignIn } from "@/lib/x-signin";
+import { resolveBuildRequest } from "@/lib/build-request";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -326,11 +327,6 @@ export default function Home() {
     return () => { active = false; };
   }, []);
 
-  const effectivePrompt = useMemo(() => {
-    if (source === "import") return `Create a polished Solana project site from ${importValue || "this project"}`;
-    if (source === "screenshot") return prompt || "Recreate this visual direction for a Solana token community";
-    return prompt;
-  }, [source, prompt, importValue]);
   const filteredGallery = useMemo(() => galleryItems.filter(item => {
     if (galleryFilter === "Featured") return true;
     if (galleryFilter === "Token sites") return item.type === "Token home";
@@ -340,14 +336,15 @@ export default function Home() {
   }), [galleryFilter]);
 
   const startBuild = async (override?: string) => {
-    const request = override || effectivePrompt;
+    const buildInput = resolveBuildRequest(source, prompt, importValue, tokenAddress);
+    const request = override?.trim() || buildInput.request;
     if (!request.trim()) { toast.error(source === "import" ? "Paste a token address or website first." : "Tell Vibekit what you want to build."); return; }
     setIsBuilding(true);
     let inferred: Partial<Project> & ReturnType<typeof inferProject> = inferProject(request, importValue);
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (apiKey.trim()) headers["x-openrouter-key"] = apiKey.trim();
-      const response = await fetch("/api/generate", { method: "POST", headers, body: JSON.stringify({ prompt: request, tokenAddress, importValue }) });
+      const response = await fetch("/api/generate", { method: "POST", headers, body: JSON.stringify({ prompt: request, tokenAddress: buildInput.tokenAddress, importValue }) });
       const data = await response.json().catch(() => ({})) as { site?: Partial<Project>; error?: string; code?: string; creditsRemaining?: string };
       if (!response.ok) {
         if (response.status === 401 || data.code === "AUTH_REQUIRED") setCreditsOpen(true);
@@ -537,7 +534,7 @@ export default function Home() {
             {/* The image is a local data URL selected by the user, so Next Image cannot optimize it. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={screenshotUrl} alt="Uploaded website reference" /><span><Check /> {screenshotName}<small>Click to replace</small></span></button> : <button className="upload-zone" onClick={() => fileRef.current?.click()}><Upload /><span>Drop a reference here or choose an image</span><small>PNG, JPG or WebP</small></button>}<Input value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Optional: tell us what to change" aria-label="Screenshot instructions" /></TabsContent>
-          <div className="builder-footer"><div className="token-field"><span>SOL</span><Input value={tokenAddress} onChange={e => setTokenAddress(e.target.value)} placeholder="Token address (optional)" aria-label="Optional token address" /></div><Button onClick={() => startBuild()} disabled={isBuilding} className="build-button">{isBuilding ? <><LoaderCircle className="spin" /> Building your site</> : <>Build my site <ArrowUp /></>}</Button></div>
+          <div className="builder-footer"><div className="token-field"><span>SOL</span><Input value={tokenAddress} onChange={e => setTokenAddress(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); void startBuild(); } }} placeholder="Token CA or extra instructions" aria-label="Token address or additional instructions" /></div><Button onClick={() => startBuild()} disabled={isBuilding} className="build-button">{isBuilding ? <><LoaderCircle className="spin" /> Building your site</> : <>Build my site <ArrowUp /></>}</Button></div>
         </Tabs></div>
         <div className="idea-grid">{starterIdeas.map(idea => <button key={idea.title} onClick={() => { setSource("prompt"); setPrompt(idea.text); }}><span><idea.icon /></span><div><strong>{idea.title}</strong><p>{idea.text}</p></div><ArrowRight /></button>)}</div>
         <div className="recent-strip"><div className="section-heading"><div><span>YOUR WORK</span><h2>Continue building</h2></div><button onClick={() => setMainView("projects")}>All projects <ArrowRight /></button></div><div className="recent-grid">{projects.slice(0,2).map(project => <button className="recent-project" key={project.id} onClick={() => openProject(project)}><div className="recent-visual" style={{ "--project-accent": project.accent } as React.CSSProperties}><span>{project.name.charAt(0)}</span><i /><i /></div><div><strong>{project.name}</strong><span>{project.updated}</span></div><ChevronRight /></button>)}</div></div>
