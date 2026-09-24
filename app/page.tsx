@@ -69,7 +69,7 @@ const starterIdeas = [
 ];
 
 const initialProjects: Project[] = [
-  { id: "mochi-club", name: "Mochi Club", prompt: "A playful token home with a live chart and roadmap", ticker: "$MOCHI", accent: "#98c8ff", theme: "light", updated: "18 min ago", published: "mochi.vibekit.io" },
+  { id: "mochi-club", name: "Mochi Club", prompt: "A playful token home with a live chart and roadmap", ticker: "$MOCHI", accent: "#98c8ff", theme: "light", updated: "18 min ago" },
   { id: "feral-dashboard", name: "Feral Dashboard", prompt: "A holder dashboard with treasury and community activity", ticker: "$FERAL", accent: "#9fd4a1", theme: "dark", updated: "Yesterday" },
 ];
 
@@ -412,9 +412,18 @@ export default function Home() {
     setCode(next.sourceHtml || projectCode(next)); setVersion(value => value + 1);
   };
   const remix = (name: string, type: string) => { setMainView("create"); setWorkspaceOpen(false); setSource("prompt"); setPrompt(`Remix ${name} into a ${type.toLowerCase()} for my Solana token community`); window.scrollTo({ top: 0, behavior: "smooth" }); toast.success("Remix loaded into the builder"); };
-  const publish = () => {
-    if (!publishSlug.trim()) return; setPublishing(true);
-    window.setTimeout(() => { const url = `${slugify(publishSlug)}.vibekit.io`; setPublishedUrl(url); setCurrent(project => ({ ...project, published: url })); setProjects(items => items.map(item => item.id === current.id ? { ...item, published: url } : item)); setPublishing(false); toast.success("Your site is live"); }, 900);
+  const publish = async (preview = false) => {
+    if (!preview && !publishSlug.trim()) return;
+    if (!current.sourceHtml) { toast.error("Generate a website before sharing it."); return; }
+    setPublishing(true);
+    try {
+      const response = await fetch("/api/publish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ preview, slug: slugify(publishSlug), name: current.name, html: current.sourceHtml }) });
+      const data = await response.json() as { url?: string; error?: string };
+      if (!response.ok || !data.url) throw new Error(data.error || "Publishing failed.");
+      if (preview) { await copy(data.url); toast.success("Shareable preview link copied"); }
+      else { setPublishedUrl(data.url); setCurrent(project => ({ ...project, published: data.url })); setProjects(items => items.map(item => item.id === current.id ? { ...item, published: data.url } : item)); toast.success("Your site is live"); }
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Publishing failed."); }
+    finally { setPublishing(false); }
   };
   const copy = async (value: string) => { await navigator.clipboard?.writeText(value); toast.success("Copied"); };
   const downloadCode = () => { const blob = new Blob([code], { type: current.sourceHtml ? "text/html" : "text/plain" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `${slugify(current.name)}-site.${current.sourceHtml ? "html" : "tsx"}`; link.click(); URL.revokeObjectURL(link.href); toast.success("Code exported"); };
@@ -523,7 +532,7 @@ export default function Home() {
             <div className="edit-composer"><Textarea value={editPrompt} onChange={e => setEditPrompt(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void applyEdit(); } }} placeholder={isEditing ? "Vibekit is editing your site..." : "Ask for any change..."} aria-label="Ask for a website edit" /><button onClick={() => void applyEdit()} aria-label="Apply edit" disabled={!editPrompt.trim() || isEditing}>{isEditing ? <LoaderCircle className="spin" /> : <ArrowUp />}</button></div>
           </aside>
           <section className="canvas-panel">
-            <div className="canvas-top"><div className="browser-dots"><i /><i /><i /></div><div className="preview-url"><Globe2 /><span>{publishedUrl || `${slugify(current.name)}.preview.vibekit.io`}</span><button onClick={() => copy(publishedUrl || `${slugify(current.name)}.preview.vibekit.io`)} aria-label="Copy preview URL"><Copy /></button></div><div className="device-switch"><button className={device === "desktop" ? "active" : ""} onClick={() => setDevice("desktop")} aria-label="Desktop preview"><Monitor /></button><button className={device === "mobile" ? "active" : ""} onClick={() => setDevice("mobile")} aria-label="Mobile preview"><Smartphone /></button></div></div>
+            <div className="canvas-top"><div className="browser-dots"><i /><i /><i /></div><div className="preview-url"><Globe2 /><span>{publishedUrl || "Local preview · share to get a link"}</span><button onClick={() => void publish(true)} disabled={publishing || !current.sourceHtml} aria-label="Create shareable preview URL"><Copy /></button></div><div className="device-switch"><button className={device === "desktop" ? "active" : ""} onClick={() => setDevice("desktop")} aria-label="Desktop preview"><Monitor /></button><button className={device === "mobile" ? "active" : ""} onClick={() => setDevice("mobile")} aria-label="Mobile preview"><Smartphone /></button></div></div>
             <div className={`canvas-stage ${device === "mobile" ? "canvas-mobile" : ""}`}>{previewMode === "preview" ? <div className="site-frame">{current.sourceHtml ? <iframe className="generated-site-frame" title={`${current.name} website preview`} sandbox="allow-scripts" srcDoc={previewDocument(code, current)} /> : <MiniSite project={current} mobile={device === "mobile"} />}</div> : <div className="code-editor"><div className="code-tabs"><span>{current.sourceHtml ? "index.html" : "app/page.tsx"}</span><button onClick={downloadCode}><Download /> Download</button></div><Textarea value={code} onChange={e => { const nextCode = e.target.value; setCode(nextCode); if (current.sourceHtml) { const next = { ...current, sourceHtml: nextCode, updated: "Just now" }; setCurrent(next); setProjects(items => items.map(item => item.id === next.id ? next : item)); } }} spellCheck={false} aria-label="Editable website code" /></div>}</div>
           </section>
         </div>
@@ -552,7 +561,7 @@ export default function Home() {
       </section>}
     </section>
 
-    <Dialog open={publishOpen} onOpenChange={setPublishOpen}><DialogContent className="publish-dialog"><DialogHeader><span className="dialog-icon"><Rocket /></span><DialogTitle>Give your site a home.</DialogTitle><DialogDescription>Publish this version now. You can keep editing after it goes live.</DialogDescription></DialogHeader>{publishedUrl ? <div className="published-card"><span><i /> LIVE</span><strong>{publishedUrl}</strong><div><Button variant="outline" onClick={() => copy(publishedUrl)}><Copy /> Copy link</Button><Button onClick={() => toast.info("Opening your live site in a new tab")}>Visit site <ExternalLink /></Button></div></div> : <><label className="subdomain-label">Choose your free subdomain</label><div className="subdomain-field"><Input value={publishSlug} onChange={e => setPublishSlug(slugify(e.target.value))} aria-label="Subdomain" /><span>.vibekit.io</span></div><div className="publish-checks"><span><Check /> SSL included</span><span><Check /> Instant updates</span><span><Check /> Custom domain ready</span></div><DialogFooter><Button className="publish-confirm" onClick={publish} disabled={publishing || !publishSlug}>{publishing ? <><LoaderCircle className="spin" /> Publishing</> : <>Publish site <ArrowRight /></>}</Button></DialogFooter></>}</DialogContent></Dialog>
+    <Dialog open={publishOpen} onOpenChange={setPublishOpen}><DialogContent className="publish-dialog"><DialogHeader><span className="dialog-icon"><Rocket /></span><DialogTitle>Give your site a home.</DialogTitle><DialogDescription>Publish this version now. You can keep editing after it goes live.</DialogDescription></DialogHeader>{publishedUrl ? <div className="published-card"><span><i /> LIVE</span><strong>{publishedUrl}</strong><div><Button variant="outline" onClick={() => copy(publishedUrl)}><Copy /> Copy link</Button><Button onClick={() => window.open(publishedUrl, "_blank", "noopener,noreferrer")}>Visit site <ExternalLink /></Button></div></div> : <><label className="subdomain-label">Choose your site address</label><div className="subdomain-field"><span>vibekit.io/s/</span><Input value={publishSlug} onChange={e => setPublishSlug(slugify(e.target.value))} aria-label="Site address" /></div><div className="publish-checks"><span><Check /> HTTPS included</span><span><Check /> Edit and republish</span></div><DialogFooter><Button className="publish-confirm" onClick={() => void publish()} disabled={publishing || !publishSlug}>{publishing ? <><LoaderCircle className="spin" /> Publishing</> : <>Publish site <ArrowRight /></>}</Button></DialogFooter></>}</DialogContent></Dialog>
 
     <Dialog open={creditsOpen} onOpenChange={setCreditsOpen}><DialogContent className="credits-dialog"><DialogHeader><span className="credits-icon"><Coins /></span><DialogTitle>AI token balance</DialogTitle><DialogDescription>Build with Vibekit credits. Your X grant is permanent and holder rewards refresh every UTC day.</DialogDescription></DialogHeader>{creditStatus?.authenticated ? <div className="credits-account">
       <div className="credits-profile"><span>{(creditStatus.user?.displayName || creditStatus.user?.username || "X").charAt(0)}</span><div><strong>{creditStatus.user?.displayName || `@${creditStatus.user?.username}`}</strong><small>{creditStatus.user?.username ? `@${creditStatus.user.username}` : "Connected with X"}</small></div><b>{compactCredits(creditStatus.user?.balance)}<small>tokens left</small></b></div>
