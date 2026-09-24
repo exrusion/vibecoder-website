@@ -75,9 +75,15 @@ function formatPrice(value?: string) {
 }
 
 function dexChartUrl(project: Project) {
-  if (!project.pairAddress) return "";
+  const marketId = project.pairAddress || project.contractAddress;
+  if (!marketId) return "";
   const theme = project.theme === "dark" ? "dark" : "light";
-  return `https://dexscreener.com/solana/${encodeURIComponent(project.pairAddress)}?embed=1&loadChartSettings=0&trades=0&tabs=0&info=0&chartLeftToolbar=0&chartTheme=${theme}&theme=${theme}`;
+  return `https://dexscreener.com/solana/${encodeURIComponent(marketId)}?embed=1&loadChartSettings=0&trades=0&tabs=0&info=0&chartLeftToolbar=0&chartTheme=${theme}&theme=${theme}`;
+}
+
+function dexMarketUrl(project: Project) {
+  const marketId = project.pairAddress || project.contractAddress;
+  return project.dexScreenerUrl || (marketId ? `https://dexscreener.com/solana/${encodeURIComponent(marketId)}` : "");
 }
 
 function shortAddress(value?: string) {
@@ -166,10 +172,10 @@ function MiniSite({ project, mobile = false }: { project: Project; mobile?: bool
       <section className="mini-market" id="market">
         <div className="mini-market-heading">
           <div><span>LIVE MARKET</span><h3>{project.ticker} on DexScreener</h3></div>
-          {project.dexScreenerUrl && <a href={project.dexScreenerUrl} target="_blank" rel="noreferrer">Open DexScreener <ExternalLink /></a>}
+          {dexMarketUrl(project) && <a href={dexMarketUrl(project)} target="_blank" rel="noreferrer">Open DexScreener <ExternalLink /></a>}
         </div>
-        {project.pairAddress ? <div className="dex-chart-shell"><iframe title={`${project.name} live DexScreener chart`} src={dexChartUrl(project)} loading="lazy" allowFullScreen /></div> : <div className="dex-chart-empty"><BarChart3 /><strong>Chart waiting for a live pair</strong><span>DexScreener will appear here as soon as this token has an active Solana market.</span></div>}
-        <div className="mini-market-foot"><span>Real-time chart by DexScreener</span><code>{project.pairAddress ? shortAddress(project.pairAddress) : "No pair detected"}</code></div>
+        {(project.pairAddress || project.contractAddress) ? <div className="dex-chart-shell"><iframe title={`${project.name} live DexScreener chart`} src={dexChartUrl(project)} loading="lazy" allowFullScreen /></div> : <div className="dex-chart-empty"><BarChart3 /><strong>Chart waiting for a live pair</strong><span>DexScreener will appear here as soon as this token has an active Solana market.</span></div>}
+        <div className="mini-market-foot"><span>Real-time chart by DexScreener</span><code>{(project.pairAddress || project.contractAddress) ? shortAddress(project.pairAddress || project.contractAddress) : "No pair detected"}</code></div>
       </section>
       <section className="mini-about">
         <div><span>01 / THE PROJECT</span><h3>{project.name} is live on Solana.</h3></div>
