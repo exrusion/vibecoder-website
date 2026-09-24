@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Toaster } from "@/components/ui/sonner";
 import ToolsWorkbench, { type ToolProject } from "@/components/tools-workbench";
 import Script from "next/script";
+import Image from "next/image";
 
 type MainView = "create" | "projects" | "gallery" | "tools";
 type BuilderSource = "prompt" | "import" | "screenshot";
@@ -70,7 +71,7 @@ const initialProjects: Project[] = [
 ];
 
 function BrandMark({ small = false }: { small?: boolean }) {
-  return <span className={small ? "brand-mark brand-mark-small" : "brand-mark"} aria-hidden="true"><i /><i /><i /></span>;
+  return <span className={small ? "brand-mark brand-mark-small" : "brand-mark"} aria-hidden="true"><Image src="/vibecoder-logo.png" alt="" width={44} height={44} priority={!small} /></span>;
 }
 
 function slugify(value: string) {

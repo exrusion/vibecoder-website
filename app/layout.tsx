@@ -6,7 +6,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "VibeCoder — Build for your Solana community",
   description: "Describe, design and publish a real website for your Solana token community.",
-  icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
+  icons: { icon: "/vibecoder-logo.png", shortcut: "/vibecoder-logo.png", apple: "/vibecoder-logo.png" },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
