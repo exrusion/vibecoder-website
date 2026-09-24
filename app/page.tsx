@@ -21,7 +21,7 @@ type MainView = "create" | "projects" | "gallery";
 type BuilderSource = "prompt" | "import" | "screenshot";
 type PreviewMode = "preview" | "code";
 type DeviceMode = "desktop" | "mobile";
-type Project = { id: string; name: string; prompt: string; ticker: string; accent: string; theme: "light" | "dark"; updated: string; published?: string; headline?: string; subline?: string; contractAddress?: string; imageUrl?: string; description?: string; website?: string; twitter?: string; marketCap?: number; liquidity?: number; priceUsd?: string; volume24h?: number };
+type Project = { id: string; name: string; prompt: string; ticker: string; accent: string; theme: "light" | "dark"; updated: string; published?: string; headline?: string; subline?: string; contractAddress?: string; imageUrl?: string; description?: string; website?: string; twitter?: string; marketCap?: number; liquidity?: number; priceUsd?: string; volume24h?: number; pairAddress?: string; dexScreenerUrl?: string };
 type ChatMessage = { role: "user" | "assistant"; text: string };
 type ModelContextApi = {
   registerTool: (tool: {
@@ -67,6 +67,19 @@ function compactUsd(value?: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
 
+function formatPrice(value?: string) {
+  const price = Number(value);
+  if (!Number.isFinite(price) || price <= 0) return "—";
+  const maximumFractionDigits = price >= 1 ? 4 : price >= 0.01 ? 6 : 10;
+  return `$${price.toLocaleString("en-US", { maximumFractionDigits })}`;
+}
+
+function dexChartUrl(project: Project) {
+  if (!project.pairAddress) return "";
+  const theme = project.theme === "dark" ? "dark" : "light";
+  return `https://dexscreener.com/solana/${encodeURIComponent(project.pairAddress)}?embed=1&loadChartSettings=0&trades=0&tabs=0&info=0&chartLeftToolbar=0&chartTheme=${theme}&theme=${theme}`;
+}
+
 function shortAddress(value?: string) {
   return value ? `${value.slice(0, 5)}…${value.slice(-5)}` : "Not linked";
 }
@@ -93,7 +106,8 @@ function inferProject(prompt: string, importValue = "") {
 }
 
 function projectCode(project: Project) {
-  return `import { TokenChart, WalletButton } from "@vibecoder/solana";
+  const chartUrl = dexChartUrl(project);
+  return `import { WalletButton } from "@vibecoder/solana";
 
 export default function ${project.name.replace(/\s/g, "")}() {
   return (
@@ -111,7 +125,18 @@ export default function ${project.name.replace(/\s/g, "")}() {
         <a href="#buy">Buy ${project.ticker}</a>
       </section>
 
-      <TokenChart token="${project.ticker}" accent="${project.accent}" />
+      ${chartUrl ? `<section id="market" className="market-chart">
+        <div>
+          <span>LIVE ON DEXSCREENER</span>
+          <h2>${project.ticker} market</h2>
+        </div>
+        <iframe
+          title="${project.name} live DexScreener chart"
+          src="${chartUrl}"
+          loading="lazy"
+          allowFullScreen
+        />
+      </section>` : `<section id="market"><p>A live chart appears when the token has an active DexScreener pair.</p></section>`}
     </main>
   );
 }`;
@@ -130,14 +155,21 @@ function MiniSite({ project, mobile = false }: { project: Project; mobile?: bool
           <span className="mini-kicker">{project.ticker} · BUILT ON SOLANA</span>
           <h2>{project.headline || "A small token with a big orbit."}</h2>
           <p>{project.subline || project.description || "Made by people who still believe the internet should be fun."}</p>
-          <div className="mini-actions"><button>Buy on Solana <ArrowRight /></button><span>View chart</span></div>
+          <div className="mini-actions"><button>Buy on Solana <ArrowRight /></button><a href="#market">View live chart</a></div>
           {project.contractAddress && <button className="contract-pill" onClick={() => navigator.clipboard?.writeText(project.contractAddress || "")}><span>CA</span><code>{shortAddress(project.contractAddress)}</code><Copy /></button>}
         </div>
         <div className="token-scene" aria-hidden="true"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className={`token-coin ${project.imageUrl ? "token-coin-image" : ""}`}>{project.imageUrl ? <img src={project.imageUrl} alt="" /> : <span>{project.name.charAt(0)}</span>}</div><i className="spark spark-one" /><i className="spark spark-two" /></div>
       </section>
       <section className="mini-stats">
-        <div><span>Market cap</span><strong>{compactUsd(project.marketCap)}</strong></div><div><span>Liquidity</span><strong>{compactUsd(project.liquidity)}</strong></div><div><span>24h volume</span><strong>{compactUsd(project.volume24h)}</strong></div>
-        <div className="mini-chart">{[28,42,36,58,52,70,64,82,78,94,88].map((h,i) => <i key={i} style={{ height: `${h}%` }} />)}</div>
+        <div><span>Price</span><strong>{formatPrice(project.priceUsd)}</strong></div><div><span>Market cap</span><strong>{compactUsd(project.marketCap)}</strong></div><div><span>Liquidity</span><strong>{compactUsd(project.liquidity)}</strong></div><div><span>24h volume</span><strong>{compactUsd(project.volume24h)}</strong></div>
+      </section>
+      <section className="mini-market" id="market">
+        <div className="mini-market-heading">
+          <div><span>LIVE MARKET</span><h3>{project.ticker} on DexScreener</h3></div>
+          {project.dexScreenerUrl && <a href={project.dexScreenerUrl} target="_blank" rel="noreferrer">Open DexScreener <ExternalLink /></a>}
+        </div>
+        {project.pairAddress ? <div className="dex-chart-shell"><iframe title={`${project.name} live DexScreener chart`} src={dexChartUrl(project)} loading="lazy" allowFullScreen /></div> : <div className="dex-chart-empty"><BarChart3 /><strong>Chart waiting for a live pair</strong><span>DexScreener will appear here as soon as this token has an active Solana market.</span></div>}
+        <div className="mini-market-foot"><span>Real-time chart by DexScreener</span><code>{project.pairAddress ? shortAddress(project.pairAddress) : "No pair detected"}</code></div>
       </section>
       <section className="mini-about">
         <div><span>01 / THE PROJECT</span><h3>{project.name} is live on Solana.</h3></div>

@@ -16,9 +16,11 @@ type SiteSpec = {
   liquidity?: number;
   priceUsd?: string;
   volume24h?: number;
+  pairAddress?: string;
+  dexScreenerUrl?: string;
 };
 
-type TokenMetadata = Pick<SiteSpec, "name" | "ticker" | "contractAddress" | "imageUrl" | "description" | "website" | "twitter" | "marketCap" | "liquidity" | "priceUsd" | "volume24h">;
+type TokenMetadata = Pick<SiteSpec, "name" | "ticker" | "contractAddress" | "imageUrl" | "description" | "website" | "twitter" | "marketCap" | "liquidity" | "priceUsd" | "volume24h" | "pairAddress" | "dexScreenerUrl">;
 
 const SOLANA_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
@@ -76,6 +78,8 @@ async function resolveToken(address: string): Promise<TokenMetadata | null> {
     liquidity: Number((pair?.liquidity as { usd?: number } | undefined)?.usd ?? jupiter.liquidity ?? 0) || undefined,
     priceUsd: String(pair?.priceUsd || jupiter.usdPrice || "") || undefined,
     volume24h: Number((pair?.volume as { h24?: number } | undefined)?.h24 ?? 0) || undefined,
+    pairAddress: String(pair?.pairAddress || "") || undefined,
+    dexScreenerUrl: String(pair?.url || "") || undefined,
   };
 }
 
