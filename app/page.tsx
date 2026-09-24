@@ -21,7 +21,7 @@ type MainView = "create" | "projects" | "gallery";
 type BuilderSource = "prompt" | "import" | "screenshot";
 type PreviewMode = "preview" | "code";
 type DeviceMode = "desktop" | "mobile";
-type Project = { id: string; name: string; prompt: string; ticker: string; accent: string; theme: "light" | "dark"; updated: string; published?: string; headline?: string; subline?: string };
+type Project = { id: string; name: string; prompt: string; ticker: string; accent: string; theme: "light" | "dark"; updated: string; published?: string; headline?: string; subline?: string; contractAddress?: string; imageUrl?: string; description?: string; website?: string; twitter?: string; marketCap?: number; liquidity?: number; priceUsd?: string; volume24h?: number };
 type ChatMessage = { role: "user" | "assistant"; text: string };
 type ModelContextApi = {
   registerTool: (tool: {
@@ -62,6 +62,15 @@ function slugify(value: string) {
   return value.toLowerCase().replace(/\$|[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-").replace(/-+/g, "-").slice(0, 30);
 }
 
+function compactUsd(value?: number) {
+  if (!value) return "—";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 }).format(value);
+}
+
+function shortAddress(value?: string) {
+  return value ? `${value.slice(0, 5)}…${value.slice(-5)}` : "Not linked";
+}
+
 function inferProject(prompt: string, importValue = "") {
   const source = `${prompt} ${importValue}`.toLowerCase();
   let name = "Orbit Club";
@@ -98,6 +107,7 @@ export default function ${project.name.replace(/\s/g, "")}() {
         <span>${project.ticker} · Solana</span>
         <h1>${project.headline || "A small token with a big orbit."}</h1>
         <p>${project.subline || "Built by the community, for the community."}</p>
+        <code>${project.contractAddress || "Add your token address"}</code>
         <a href="#buy">Buy ${project.ticker}</a>
       </section>
 
@@ -111,23 +121,33 @@ function MiniSite({ project, mobile = false }: { project: Project; mobile?: bool
   return (
     <div className={`mini-site ${project.theme === "dark" ? "mini-site-dark" : ""} ${mobile ? "mini-site-mobile" : ""}`} style={{ "--site-accent": project.accent } as React.CSSProperties}>
       <nav className="mini-nav">
-        <div className="mini-wordmark"><span className="mini-token-orb">{project.name.charAt(0)}</span><strong>{project.name}</strong></div>
-        <div className="mini-links"><span>About</span><span>Roadmap</span><span>Community</span></div>
+        <div className="mini-wordmark"><span className="mini-token-orb">{project.imageUrl ? <img src={project.imageUrl} alt="" /> : project.name.charAt(0)}</span><strong>{project.name}</strong></div>
+        <div className="mini-links"><span>Story</span><span>Market</span><span>Community</span></div>
         <button>Buy {project.ticker}</button>
       </nav>
       <section className="mini-hero">
         <div className="mini-copy">
           <span className="mini-kicker">{project.ticker} · BUILT ON SOLANA</span>
           <h2>{project.headline || "A small token with a big orbit."}</h2>
-          <p>{project.subline || "Made by people who still believe the internet should be fun."}</p>
-          <div className="mini-actions"><button>Join the community <ArrowRight /></button><span>View chart</span></div>
+          <p>{project.subline || project.description || "Made by people who still believe the internet should be fun."}</p>
+          <div className="mini-actions"><button>Buy on Solana <ArrowRight /></button><span>View chart</span></div>
+          {project.contractAddress && <button className="contract-pill" onClick={() => navigator.clipboard?.writeText(project.contractAddress || "")}><span>CA</span><code>{shortAddress(project.contractAddress)}</code><Copy /></button>}
         </div>
-        <div className="token-scene" aria-hidden="true"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="token-coin"><span>{project.name.charAt(0)}</span></div><i className="spark spark-one" /><i className="spark spark-two" /></div>
+        <div className="token-scene" aria-hidden="true"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className={`token-coin ${project.imageUrl ? "token-coin-image" : ""}`}>{project.imageUrl ? <img src={project.imageUrl} alt="" /> : <span>{project.name.charAt(0)}</span>}</div><i className="spark spark-one" /><i className="spark spark-two" /></div>
       </section>
       <section className="mini-stats">
-        <div><span>Community</span><strong>14.2K</strong></div><div><span>Liquidity</span><strong>$284K</strong></div><div><span>Holders</span><strong>3,841</strong></div>
+        <div><span>Market cap</span><strong>{compactUsd(project.marketCap)}</strong></div><div><span>Liquidity</span><strong>{compactUsd(project.liquidity)}</strong></div><div><span>24h volume</span><strong>{compactUsd(project.volume24h)}</strong></div>
         <div className="mini-chart">{[28,42,36,58,52,70,64,82,78,94,88].map((h,i) => <i key={i} style={{ height: `${h}%` }} />)}</div>
       </section>
+      <section className="mini-about">
+        <div><span>01 / THE PROJECT</span><h3>{project.name} is live on Solana.</h3></div>
+        <p>{project.description || `${project.name} is a community-led token with a clear home for its story, market data, and community links.`}</p>
+      </section>
+      <section className="mini-community">
+        <div><span>CONTRACT</span><strong>{project.contractAddress || "Connect a token to show its contract"}</strong></div>
+        <div className="mini-community-links">{project.website && <a href={project.website}>Website <ExternalLink /></a>}{project.twitter && <a href={project.twitter}>X / Twitter <ExternalLink /></a>}<a href="#market">Live chart <ArrowRight /></a></div>
+      </section>
+      <footer className="mini-footer"><strong>{project.name}</strong><span>{project.ticker} · Built on Solana</span></footer>
     </div>
   );
 }
@@ -198,8 +218,7 @@ export default function Home() {
     const request = override || effectivePrompt;
     if (!request.trim()) { toast.error(source === "import" ? "Paste a token address or website first." : "Tell VibeCoder what you want to build."); return; }
     setIsBuilding(true);
-    let inferred = inferProject(request, importValue);
-    let aiCopy: { headline?: string; subline?: string } = {};
+    let inferred: Partial<Project> & ReturnType<typeof inferProject> = inferProject(request, importValue);
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (apiKey.trim()) headers["x-openrouter-key"] = apiKey.trim();
@@ -210,12 +229,11 @@ export default function Home() {
       if (response.ok) {
         const data = await response.json() as { site?: Partial<Project> };
         if (data.site) {
-          inferred = { ...inferred, ...data.site } as typeof inferred;
-          aiCopy = { headline: data.site.headline, subline: data.site.subline };
+          inferred = { ...inferred, ...data.site };
         }
       }
     } catch { /* The local design engine remains available when an AI provider is not configured. */ }
-    const next: Project = { id: `${slugify(inferred.name)}-${Date.now()}`, name: inferred.name, prompt: request, ticker: inferred.ticker, accent: inferred.accent, theme: inferred.theme, updated: "Just now", ...aiCopy };
+    const next: Project = { ...inferred, id: `${slugify(inferred.name || "project")}-${Date.now()}`, name: inferred.name || "Untitled project", prompt: request, ticker: inferred.ticker || "$TOKEN", accent: inferred.accent || "#7c5cff", theme: inferred.theme || "dark", updated: "Just now" };
     window.setTimeout(() => {
       setCurrent(next); setCode(projectCode(next));
       setMessages([{ role: "user", text: request }, { role: "assistant", text: `I built ${next.name} with a responsive token home, live market section and community links.` }]);
