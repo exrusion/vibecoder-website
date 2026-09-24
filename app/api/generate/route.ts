@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { GENERATION_RESERVE, refundGenerationCredits, reserveGenerationCredits, settleGenerationCredits } from "@/lib/credits";
+import { tokenArtwork } from "@/lib/site-branding";
 
 type SiteSpec = {
   name: string;
@@ -72,7 +73,7 @@ async function resolveToken(address: string): Promise<TokenMetadata | null> {
     name: name || symbol,
     ticker: symbol ? `$${symbol.replace(/^\$/, "")}` : `$${name.slice(0, 8).toUpperCase()}`,
     contractAddress: address,
-    imageUrl: normalizeAssetUrl(pump.image_uri || jupiter.icon || info?.imageUrl) || undefined,
+    imageUrl: tokenArtwork(normalizeAssetUrl(pump.image_uri || jupiter.icon || info?.imageUrl) || undefined, address),
     description: String(pump.description || "") || undefined,
     website: String(pump.website || info?.websites?.[0]?.url || "") || undefined,
     twitter: String(pump.twitter || (twitterSocial ? `https://x.com/${twitterSocial.replace(/^@/, "")}` : "")) || undefined,

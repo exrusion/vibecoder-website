@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { signOut } from "next-auth/react";
 import { startXSignIn } from "@/lib/x-signin";
 import { resolveBuildRequest } from "@/lib/build-request";
+import { ensureTokenImage } from "@/lib/site-branding";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -193,10 +194,10 @@ function legacySiteSource(project: Project) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>:root{--display:Georgia,serif;--sans:Arial,sans-serif;--font-mono:monospace}*{box-sizing:border-box}body{margin:0}${styles.join("\n")}</style></head><body>${snapshot.outerHTML}</body></html>`;
 }
 
-function previewDocument(html: string) {
+function previewDocument(html: string, project: Project) {
   // Generated code runs in an opaque-origin sandbox; this policy also blocks network calls and external scripts.
   const policy = "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src https: data: blob:; script-src 'unsafe-inline'; frame-src https://dexscreener.com; media-src https: data:; connect-src 'none'; form-action 'none'; base-uri 'none'";
-  return `<!doctype html><meta http-equiv="Content-Security-Policy" content="${policy}">${html}`;
+  return `<!doctype html><meta http-equiv="Content-Security-Policy" content="${policy}">${ensureTokenImage(html, project.imageUrl, project.name, project.contractAddress)}`;
 }
 
 function SiteGame({ project }: { project: Project }) {
@@ -400,7 +401,10 @@ export default function Home() {
   };
 
   const openProject = (project: Project) => {
-    setCurrent(project); setCode(project.sourceHtml || projectCode(project)); setMessages([{ role: "assistant", text: `${project.name} is ready. Tell me what you want to change.` }]); setPublishSlug(slugify(project.name)); setPublishedUrl(project.published || ""); setWorkspaceOpen(true); setMainView("create"); window.scrollTo({ top: 0, behavior: "smooth" });
+    const next = project.sourceHtml ? { ...project, sourceHtml: ensureTokenImage(project.sourceHtml, project.imageUrl, project.name, project.contractAddress) } : project;
+    setCurrent(next); setCode(next.sourceHtml || projectCode(next));
+    if (next.sourceHtml !== project.sourceHtml) setProjects(items => items.map(item => item.id === next.id ? next : item));
+    setMessages([{ role: "assistant", text: `${next.name} is ready. Tell me what you want to change.` }]); setPublishSlug(slugify(next.name)); setPublishedUrl(next.published || ""); setWorkspaceOpen(true); setMainView("create"); window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const updateToolProject = (patch: Partial<ToolProject>) => {
     const next = { ...current, ...patch, updated: "Just now" };
@@ -520,7 +524,7 @@ export default function Home() {
           </aside>
           <section className="canvas-panel">
             <div className="canvas-top"><div className="browser-dots"><i /><i /><i /></div><div className="preview-url"><Globe2 /><span>{publishedUrl || `${slugify(current.name)}.preview.vibekit.io`}</span><button onClick={() => copy(publishedUrl || `${slugify(current.name)}.preview.vibekit.io`)} aria-label="Copy preview URL"><Copy /></button></div><div className="device-switch"><button className={device === "desktop" ? "active" : ""} onClick={() => setDevice("desktop")} aria-label="Desktop preview"><Monitor /></button><button className={device === "mobile" ? "active" : ""} onClick={() => setDevice("mobile")} aria-label="Mobile preview"><Smartphone /></button></div></div>
-            <div className={`canvas-stage ${device === "mobile" ? "canvas-mobile" : ""}`}>{previewMode === "preview" ? <div className="site-frame">{current.sourceHtml ? <iframe className="generated-site-frame" title={`${current.name} website preview`} sandbox="allow-scripts" srcDoc={previewDocument(code)} /> : <MiniSite project={current} mobile={device === "mobile"} />}</div> : <div className="code-editor"><div className="code-tabs"><span>{current.sourceHtml ? "index.html" : "app/page.tsx"}</span><button onClick={downloadCode}><Download /> Download</button></div><Textarea value={code} onChange={e => { const nextCode = e.target.value; setCode(nextCode); if (current.sourceHtml) { const next = { ...current, sourceHtml: nextCode, updated: "Just now" }; setCurrent(next); setProjects(items => items.map(item => item.id === next.id ? next : item)); } }} spellCheck={false} aria-label="Editable website code" /></div>}</div>
+            <div className={`canvas-stage ${device === "mobile" ? "canvas-mobile" : ""}`}>{previewMode === "preview" ? <div className="site-frame">{current.sourceHtml ? <iframe className="generated-site-frame" title={`${current.name} website preview`} sandbox="allow-scripts" srcDoc={previewDocument(code, current)} /> : <MiniSite project={current} mobile={device === "mobile"} />}</div> : <div className="code-editor"><div className="code-tabs"><span>{current.sourceHtml ? "index.html" : "app/page.tsx"}</span><button onClick={downloadCode}><Download /> Download</button></div><Textarea value={code} onChange={e => { const nextCode = e.target.value; setCode(nextCode); if (current.sourceHtml) { const next = { ...current, sourceHtml: nextCode, updated: "Just now" }; setCurrent(next); setProjects(items => items.map(item => item.id === next.id ? next : item)); } }} spellCheck={false} aria-label="Editable website code" /></div>}</div>
           </section>
         </div>
       </section> : mainView === "create" ? <section className="create-view">

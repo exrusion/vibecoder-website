@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { refundGenerationCredits, reserveGenerationCredits, settleGenerationCredits } from "@/lib/credits";
+import { ensureTokenImage } from "@/lib/site-branding";
 
 const CODE_RESERVE = BigInt(24_000);
 const MAX_HTML_LENGTH = 75_000;
@@ -26,8 +27,9 @@ export async function POST(request: Request) {
   const prompt = typeof body.prompt === "string" ? body.prompt.trim().slice(0, 2000) : "";
   const mode = body.mode === "edit" ? "edit" : "create";
   const previousHtml = typeof body.html === "string" ? body.html.trim().slice(0, MAX_HTML_LENGTH) : "";
-  const project = body.project && typeof body.project === "object" && !Array.isArray(body.project)
-    ? JSON.stringify(body.project).slice(0, 12_000) : "{}";
+  const projectFacts = body.project && typeof body.project === "object" && !Array.isArray(body.project)
+    ? body.project as { name?: unknown; imageUrl?: unknown; contractAddress?: unknown } : {};
+  const project = JSON.stringify(projectFacts).slice(0, 12_000);
   const history = Array.isArray(body.history) ? body.history.slice(-8).filter((message): message is { role: string; text: string } =>
     message && typeof message === "object" && (message.role === "user" || message.role === "assistant") && typeof message.text === "string"
   ).map(message => `${message.role}: ${message.text.slice(0, 500)}`).join("\n") : "";
@@ -69,7 +71,11 @@ export async function POST(request: Request) {
     if (!response.ok) throw new Error(`The AI provider could not generate the site (${response.status}).`);
     const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { total_tokens?: number } };
     const output = payload.choices?.[0]?.message?.content || "";
-    const html = extractDocument(output);
+    const generatedHtml = extractDocument(output);
+    const html = ensureTokenImage(generatedHtml,
+      typeof projectFacts.imageUrl === "string" ? projectFacts.imageUrl : undefined,
+      typeof projectFacts.name === "string" ? projectFacts.name : undefined,
+      typeof projectFacts.contractAddress === "string" ? projectFacts.contractAddress : undefined);
     if (!html || html.length > MAX_HTML_LENGTH) throw new Error("The AI returned incomplete website code. Please try again.");
     const comment = output.match(/<!--\s*VIBEKIT_REPLY:\s*([\s\S]*?)\s*-->/i)?.[1] || "";
     const reply = comment.split(/;\s*VIBEKIT_ACTION:/i)[0]?.trim().slice(0, 300) || "I updated the website. Check the preview and tell me what to refine.";
