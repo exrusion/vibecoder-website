@@ -2,10 +2,10 @@ import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 
 export const maxDuration = 300;
-const TOKEN_HASH = "da26f5d2873375c744e9e34e6548dd5a2aa882781179285d4854fb172d692935";
+const TOKEN_HASH = "11795eb4543f0cb1979365116820fe871fe1cddcfc0d130925778074c186de67";
 
 function authorized(request: NextRequest) {
-  const token = request.headers.get("x-reversepad-token") || request.headers.get("authorization")?.replace(/^Bearer\\s+/i, "") || "";
+  const token = request.headers.get("x-reversepad-token") || request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || "";
   const digest = createHash("sha256").update(token).digest("hex");
   return digest === TOKEN_HASH;
 }
