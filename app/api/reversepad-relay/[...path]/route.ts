@@ -5,7 +5,7 @@ export const maxDuration = 300;
 const TOKEN_HASH = "da26f5d2873375c744e9e34e6548dd5a2aa882781179285d4854fb172d692935";
 
 function authorized(request: NextRequest) {
-  const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || "";
+  const token = request.headers.get("x-reversepad-token") || request.headers.get("authorization")?.replace(/^Bearer\\s+/i, "") || "";
   const digest = createHash("sha256").update(token).digest("hex");
   return digest === TOKEN_HASH;
 }
